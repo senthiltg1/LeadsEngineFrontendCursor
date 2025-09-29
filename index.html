@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadsEngine - Dental Lead Management Dashboard</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="assets/css/custom.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-tooth me-2"></i>
+                LeadsEngine
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="index.html">
+                            <i class="fas fa-tachometer-alt me-1"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="leads.html">
+                            <i class="fas fa-users me-1"></i>
+                            Leads
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-chart-bar me-1"></i>
+                            Reports
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">
+                            <i class="fas fa-cog me-1"></i>
+                            Settings
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="dropdown">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+                        <img src="https://via.placeholder.com/32x32/4A90E2/FFFFFF?text=DR" class="rounded-circle me-2" width="32" height="32">
+                        Dr. Sarah Johnson
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Profile</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Settings</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="login.html"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="text-gradient mb-2">Dashboard Overview</h1>
+                <p class="text-muted">Welcome back, Dr. Johnson! Here's what's happening with your leads today.</p>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="stat-card blue fade-in-up">
+                    <div class="stat-number">247</div>
+                    <div class="stat-label">Total Leads</div>
+                    <i class="fas fa-users stat-icon"></i>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="stat-card green fade-in-up">
+                    <div class="stat-number">23</div>
+                    <div class="stat-label">New This Week</div>
+                    <i class="fas fa-plus-circle stat-icon"></i>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="stat-card orange fade-in-up">
+                    <div class="stat-number">18</div>
+                    <div class="stat-label">In Progress</div>
+                    <i class="fas fa-clock stat-icon"></i>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="stat-card cyan fade-in-up">
+                    <div class="stat-number">42</div>
+                    <div class="stat-label">Converted</div>
+                    <i class="fas fa-check-circle stat-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Row -->
+        <div class="row">
+            <!-- Recent Activity -->
+            <div class="col-xl-8 col-lg-7 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-activity me-2 text-primary"></i>
+                            Recent Activity
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="activity-item">
+                            <div class="activity-icon blue">
+                                <i class="fas fa-user-plus"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>New lead added:</strong> Jennifer Martinez scheduled a consultation
+                                </div>
+                                <div class="activity-time">2 minutes ago</div>
+                            </div>
+                        </div>
+                        
+                        <div class="activity-item">
+                            <div class="activity-icon green">
+                                <i class="fas fa-phone"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>Call completed:</strong> Follow-up call with Michael Chen
+                                </div>
+                                <div class="activity-time">15 minutes ago</div>
+                            </div>
+                        </div>
+                        
+                        <div class="activity-item">
+                            <div class="activity-icon orange">
+                                <i class="fas fa-calendar"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>Appointment scheduled:</strong> Sarah Wilson - Teeth cleaning
+                                </div>
+                                <div class="activity-time">1 hour ago</div>
+                            </div>
+                        </div>
+                        
+                        <div class="activity-item">
+                            <div class="activity-icon cyan">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>Email sent:</strong> Treatment plan sent to David Rodriguez
+                                </div>
+                                <div class="activity-time">2 hours ago</div>
+                            </div>
+                        </div>
+                        
+                        <div class="activity-item">
+                            <div class="activity-icon blue">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>Lead converted:</strong> Lisa Thompson completed treatment
+                                </div>
+                                <div class="activity-time">3 hours ago</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="col-xl-4 col-lg-5 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-bolt me-2 text-warning"></i>
+                            Quick Actions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-3">
+                            <a href="leads.html" class="btn btn-primary btn-lg">
+                                <i class="fas fa-plus me-2"></i>
+                                Add New Lead
+                            </a>
+                            <a href="leads.html" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-list me-2"></i>
+                                View All Leads
+                            </a>
+                            <a href="#" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-chart-line me-2"></i>
+                                View Reports
+                            </a>
+                            <a href="#" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-calendar-plus me-2"></i>
+                                Schedule Appointment
+                            </a>
+                            <a href="#" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-envelope me-2"></i>
+                                Send Email Campaign
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Endpoints Reference -->
+        <div class="row mt-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-code me-2 text-info"></i>
+                            API Endpoints Reference
+                            <button class="btn btn-sm btn-outline-secondary float-end" type="button" data-bs-toggle="collapse" data-bs-target="#apiEndpoints" aria-expanded="false">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </h5>
+                    </div>
+                    <div class="collapse" id="apiEndpoints">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <h6 class="text-muted mb-3">Authentication</h6>
+                                    <div class="mb-3">
+                                        <a href="#" class="api-endpoint post">POST /api/auth/login</a>
+                                        <a href="#" class="api-endpoint post">POST /api/auth/logout</a>
+                                        <a href="#" class="api-endpoint post">POST /api/auth/refresh</a>
+                                        <a href="#" class="api-endpoint get">GET /api/auth/me</a>
+                                    </div>
+                                    
+                                    <h6 class="text-muted mb-3">Leads Management</h6>
+                                    <div class="mb-3">
+                                        <a href="#" class="api-endpoint get">GET /api/leads</a>
+                                        <a href="#" class="api-endpoint post">POST /api/leads</a>
+                                        <a href="#" class="api-endpoint get">GET /api/leads/:id</a>
+                                        <a href="#" class="api-endpoint put">PUT /api/leads/:id</a>
+                                        <a href="#" class="api-endpoint delete">DELETE /api/leads/:id</a>
+                                        <a href="#" class="api-endpoint patch">PATCH /api/leads/:id/status</a>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6 mb-4">
+                                    <h6 class="text-muted mb-3">Appointments</h6>
+                                    <div class="mb-3">
+                                        <a href="#" class="api-endpoint get">GET /api/appointments</a>
+                                        <a href="#" class="api-endpoint post">POST /api/appointments</a>
+                                        <a href="#" class="api-endpoint put">PUT /api/appointments/:id</a>
+                                        <a href="#" class="api-endpoint delete">DELETE /api/appointments/:id</a>
+                                    </div>
+                                    
+                                    <h6 class="text-muted mb-3">Communications</h6>
+                                    <div class="mb-3">
+                                        <a href="#" class="api-endpoint get">GET /api/messages</a>
+                                        <a href="#" class="api-endpoint post">POST /api/messages</a>
+                                        <a href="#" class="api-endpoint get">GET /api/emails</a>
+                                        <a href="#" class="api-endpoint post">POST /api/emails/send</a>
+                                    </div>
+                                    
+                                    <h6 class="text-muted mb-3">Reports & Analytics</h6>
+                                    <div class="mb-3">
+                                        <a href="#" class="api-endpoint get">GET /api/reports/dashboard</a>
+                                        <a href="#" class="api-endpoint get">GET /api/reports/leads</a>
+                                        <a href="#" class="api-endpoint get">GET /api/reports/conversion</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    
+    <script>
+        // Add some interactive functionality
+        $(document).ready(function() {
+            // Animate stat cards on load
+            $('.stat-card').each(function(index) {
+                $(this).css('animation-delay', (index * 0.1) + 's');
+            });
+            
+            // Add hover effects to API endpoints
+            $('.api-endpoint').hover(
+                function() {
+                    $(this).addClass('shadow-sm');
+                },
+                function() {
+                    $(this).removeClass('shadow-sm');
+                }
+            );
+        });
+    </script>
+</body>
+</html>
