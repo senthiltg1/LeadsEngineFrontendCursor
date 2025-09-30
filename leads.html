@@ -350,72 +350,47 @@
 
                         <!-- Edit Tab -->
                         <div class="tab-pane fade" id="edit" role="tabpanel">
-                            <form>
-                                <div class="row">
+                            <form id="edit-lead-form">
+                                <div class="row mb-3">
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="firstName" class="form-label">First Name</label>
-                                            <input type="text" class="form-control" id="firstName" value="Jennifer">
-                                        </div>
+                                        <label class="form-label">First Name</label>
+                                        <input type="text" class="form-control" id="edit-first-name">
                                     </div>
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="lastName" class="form-label">Last Name</label>
-                                            <input type="text" class="form-control" id="lastName" value="Martinez">
-                                        </div>
+                                        <label class="form-label">Last Name</label>
+                                        <input type="text" class="form-control" id="edit-last-name">
                                     </div>
                                 </div>
-                                <div class="row">
+
+                                <div class="row mb-3">
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="email" class="form-label">Email</label>
-                                            <input type="email" class="form-control" id="email" value="j.martinez@email.com">
-                                        </div>
+                                        <label class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="edit-email">
                                     </div>
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="phone" class="form-label">Phone</label>
-                                            <input type="tel" class="form-control" id="phone" value="(555) 123-4567">
-                                        </div>
+                                        <label class="form-label">Phone</label>
+                                        <input type="text" class="form-control" id="edit-phone">
                                     </div>
                                 </div>
-                                <div class="row">
+
+                                <div class="row mb-3">
                                     <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="status" class="form-label">Status</label>
-                                            <select class="form-select" id="status">
-                                                <option value="new" selected>New</option>
-                                                <option value="progress">In Progress</option>
-                                                <option value="converted">Converted</option>
-                                                <option value="lost">Lost</option>
-                                            </select>
-                                        </div>
+                                        <label class="form-label">Status</label>
+                                        <div id="edit-status-dropdown"></div>
                                     </div>
                                     <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="source" class="form-label">Source</label>
-                                            <select class="form-select" id="source">
-                                                <option value="website" selected>Website</option>
-                                                <option value="referral">Referral</option>
-                                                <option value="social">Social Media</option>
-                                                <option value="advertisement">Advertisement</option>
-                                            </select>
-                                        </div>
+                                        <label class="form-label">Source</label>
+                                        <div id="edit-source-dropdown"></div>
                                     </div>
                                     <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label for="assignedTo" class="form-label">Assigned To</label>
-                                            <select class="form-select" id="assignedTo">
-                                                <option value="dr-johnson" selected>Dr. Sarah Johnson</option>
-                                                <option value="dr-smith">Dr. Michael Smith</option>
-                                                <option value="dr-brown">Dr. Emily Brown</option>
-                                            </select>
-                                        </div>
+                                        <label class="form-label">Assigned To</label>
+                                        <div id="edit-user-dropdown"></div>
                                     </div>
                                 </div>
-                                <div class="d-flex gap-2">
-                                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                                    <button type="button" class="btn btn-outline-secondary">Cancel</button>
+
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-primary" id="save-lead-btn">Save Changes</button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                 </div>
                             </form>
                         </div>
@@ -493,6 +468,9 @@
     <script src="assets/js/bus.js"></script>
     <script src="assets/js/api.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/components/status-dropdown.js"></script>
+    <script src="assets/js/components/source-dropdown.js"></script>
+    <script src="assets/js/components/user-dropdown.js"></script>
     <script src="assets/js/leads.js"></script>
 
     <script>
