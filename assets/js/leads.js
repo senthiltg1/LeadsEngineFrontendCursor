@@ -85,6 +85,370 @@ const LeadsPage = {
     deleteModal: null,
     leadToDelete: null,
 
+    // Form validator instance (centralized validation module)
+    formValidator: null,
+
+    /**
+     * Legacy validators object - kept for backward compatibility
+     * New code should use this.formValidator instead
+     */
+    validators: {
+        /**
+         * Validate email format
+         * @param {string} email - Email to validate
+         * @returns {boolean} True if valid
+         */
+        isValidEmail(email) {
+            if (!email) return false;
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email.trim());
+        },
+
+        /**
+         * Validate phone format
+         * Allows +, -, spaces, parentheses, numbers
+         * @param {string} phone - Phone to validate
+         * @returns {boolean} True if valid
+         */
+        isValidPhone(phone) {
+            if (!phone) return false;
+            const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
+            return phoneRegex.test(phone.trim());
+        },
+
+        /**
+         * Validate required field with min length
+         * @param {string} value - Value to validate
+         * @param {number} minLength - Minimum length
+         * @returns {boolean} True if valid
+         */
+        isValidName(value, minLength = 2) {
+            if (!value) return false;
+            return value.trim().length >= minLength;
+        },
+
+        /**
+         * Validate required dropdown selection
+         * @param {string|number} value - Selected value
+         * @returns {boolean} True if valid
+         */
+        isValidDropdown(value) {
+            return value !== null && value !== undefined && value !== '';
+        }
+    },
+
+    /**
+     * Validate a single field and show/hide error message with real-time feedback
+     * @param {HTMLElement} field - Input field to validate
+     * @param {string} fieldName - Name of field for error tracking
+     * @param {string} formType - 'createLead' or 'editLead'
+     * @param {boolean} showEmptyAsNeutral - If true, empty fields show no validation state
+     * @returns {boolean} True if valid
+     */
+    validateField(field, fieldName, formType, showEmptyAsNeutral = false) {
+        if (!field) return true;
+
+        const value = field.value;
+        let isValid = true;
+        let errorMessage = '';
+        let isEmpty = !value || !value.trim();
+
+        // Validation rules based on field name
+        switch(fieldName) {
+            case 'firstName':
+                if (isEmpty) {
+                    isValid = false;
+                    errorMessage = 'First name is required (minimum 2 characters)';
+                } else {
+                    isValid = this.validators.isValidName(value, 2);
+                    errorMessage = 'First name must be at least 2 characters';
+                }
+                break;
+
+            case 'lastName':
+                if (isEmpty) {
+                    isValid = false;
+                    errorMessage = 'Last name is required (minimum 2 characters)';
+                } else {
+                    isValid = this.validators.isValidName(value, 2);
+                    errorMessage = 'Last name must be at least 2 characters';
+                }
+                break;
+
+            case 'email':
+                // Email is optional BUT if provided, must be valid
+                if (isEmpty) {
+                    // Don't mark as invalid if empty (might use phone instead)
+                    if (showEmptyAsNeutral) {
+                        field.classList.remove('is-invalid', 'is-valid');
+                        this.hideFieldError(field);
+                        this.removeFieldIcon(field);
+                        delete this.validationErrors[formType][fieldName];
+                        return true;
+                    }
+                } else {
+                    isValid = this.validators.isValidEmail(value);
+                    errorMessage = 'Invalid email format (example: user@domain.com)';
+                }
+                break;
+
+            case 'phone':
+                // Phone is optional BUT if provided, must be valid
+                if (isEmpty) {
+                    // Don't mark as invalid if empty (might use email instead)
+                    if (showEmptyAsNeutral) {
+                        field.classList.remove('is-invalid', 'is-valid');
+                        this.hideFieldError(field);
+                        this.removeFieldIcon(field);
+                        delete this.validationErrors[formType][fieldName];
+                        return true;
+                    }
+                } else {
+                    isValid = this.validators.isValidPhone(value);
+                    errorMessage = 'Invalid phone (example: +1-555-123-4567 or (555) 123-4567)';
+                }
+                break;
+
+            case 'status':
+            case 'source':
+                isValid = this.validators.isValidDropdown(value);
+                errorMessage = `${fieldName === 'status' ? 'Status' : 'Source'} is required`;
+                break;
+        }
+
+        // Update field visual state with icons
+        if (isEmpty && showEmptyAsNeutral) {
+            // Empty field in real-time mode: neutral state
+            field.classList.remove('is-invalid', 'is-valid');
+            this.hideFieldError(field);
+            this.removeFieldIcon(field);
+            delete this.validationErrors[formType][fieldName];
+        } else if (isValid) {
+            // Valid field: green border + checkmark
+            field.classList.remove('is-invalid');
+            field.classList.add('is-valid');
+            this.hideFieldError(field);
+            this.showFieldIcon(field, 'valid');
+            delete this.validationErrors[formType][fieldName];
+        } else {
+            // Invalid field: red border + X icon + error message
+            field.classList.remove('is-valid');
+            field.classList.add('is-invalid');
+            this.showFieldError(field, errorMessage);
+            this.showFieldIcon(field, 'invalid');
+            this.validationErrors[formType][fieldName] = errorMessage;
+        }
+
+        return isValid;
+    },
+
+    /**
+     * Show validation icon inside field (checkmark or X)
+     * @param {HTMLElement} field - Input field
+     * @param {string} type - 'valid' or 'invalid'
+     */
+    showFieldIcon(field, type) {
+        // Remove existing icon
+        this.removeFieldIcon(field);
+
+        // Create icon element
+        const icon = document.createElement('i');
+        icon.className = type === 'valid'
+            ? 'fas fa-check-circle text-success validation-icon'
+            : 'fas fa-times-circle text-danger validation-icon';
+        icon.style.cssText = 'position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none;';
+        icon.setAttribute('data-validation-icon', 'true');
+
+        // Make parent position relative if not already
+        const parent = field.parentNode;
+        if (parent && window.getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+        }
+
+        // Insert icon
+        parent.appendChild(icon);
+    },
+
+    /**
+     * Remove validation icon from field
+     * @param {HTMLElement} field - Input field
+     */
+    removeFieldIcon(field) {
+        const parent = field.parentNode;
+        if (parent) {
+            const existingIcon = parent.querySelector('[data-validation-icon]');
+            if (existingIcon) {
+                existingIcon.remove();
+            }
+        }
+    },
+
+    /**
+     * Show error message below field
+     * @param {HTMLElement} field - Input field
+     * @param {string} message - Error message
+     */
+    showFieldError(field, message) {
+        // Remove existing error message
+        this.hideFieldError(field);
+
+        // Create error message element
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'invalid-feedback d-block';
+        errorDiv.textContent = message;
+        errorDiv.setAttribute('data-error-for', field.id || field.name);
+
+        // Insert after field
+        field.parentNode.insertBefore(errorDiv, field.nextSibling);
+    },
+
+    /**
+     * Hide error message for field
+     * @param {HTMLElement} field - Input field
+     */
+    hideFieldError(field) {
+        const errorDiv = field.parentNode.querySelector(`.invalid-feedback[data-error-for="${field.id || field.name}"]`);
+        if (errorDiv) {
+            errorDiv.remove();
+        }
+    },
+
+    /**
+     * Validate entire form and update error summary
+     * @param {string} formType - 'createLead' or 'editLead'
+     * @returns {boolean} True if all fields valid
+     */
+    validateForm(formType) {
+        const formId = formType === 'createLead' ? 'add-lead-form' : 'edit-lead-form';
+        const form = document.getElementById(formId);
+        if (!form) return false;
+
+        // Reset validation errors for this form
+        this.validationErrors[formType] = {};
+
+        // Get all fields to validate
+        const firstName = form.querySelector('[name="first_name"]');
+        const lastName = form.querySelector('[name="last_name"]');
+        const email = form.querySelector('[name="email"]');
+        const phone = form.querySelector('[name="phone"]');
+        const status = form.querySelector('[name="status_id"]');
+        const source = form.querySelector('[name="source_id"]');
+
+        // Validate all required fields
+        const validations = [
+            this.validateField(firstName, 'firstName', formType),
+            this.validateField(lastName, 'lastName', formType),
+            this.validateField(status, 'status', formType),
+            this.validateField(source, 'source', formType)
+        ];
+
+        // Validate email if provided
+        if (email && email.value.trim()) {
+            validations.push(this.validateField(email, 'email', formType));
+        }
+
+        // Validate phone if provided
+        if (phone && phone.value.trim()) {
+            validations.push(this.validateField(phone, 'phone', formType));
+        }
+
+        // Special rule: Email OR Phone required
+        const hasEmail = email && email.value.trim();
+        const hasPhone = phone && phone.value.trim();
+        if (!hasEmail && !hasPhone) {
+            // Show error on both fields
+            if (email) {
+                email.classList.add('is-invalid');
+                this.showFieldError(email, 'Email or Phone is required');
+            }
+            if (phone) {
+                phone.classList.add('is-invalid');
+                this.showFieldError(phone, 'Email or Phone is required');
+            }
+            this.validationErrors[formType]['emailOrPhone'] = 'Email or Phone is required';
+            validations.push(false);
+        }
+
+        // Check if all validations passed
+        const allValid = validations.every(v => v === true);
+
+        // Update error summary
+        this.updateErrorSummary(formType);
+
+        // Update save button state
+        this.updateSaveButtonState(formType, allValid);
+
+        return allValid;
+    },
+
+    /**
+     * Update error summary at top of form
+     * Lists specific fields with errors instead of generic count
+     * @param {string} formType - 'createLead' or 'editLead'
+     */
+    updateErrorSummary(formType) {
+        const formId = formType === 'createLead' ? 'add-lead-form' : 'edit-lead-form';
+        const form = document.getElementById(formId);
+        if (!form) return;
+
+        // Find or create error summary container
+        let summaryDiv = form.querySelector('.validation-summary');
+        if (!summaryDiv) {
+            summaryDiv = document.createElement('div');
+            summaryDiv.className = 'validation-summary alert alert-danger';
+            summaryDiv.style.display = 'none';
+            form.insertBefore(summaryDiv, form.firstChild);
+        }
+
+        const errors = this.validationErrors[formType];
+        const errorKeys = Object.keys(errors);
+
+        if (errorKeys.length > 0) {
+            // Map field keys to user-friendly names
+            const fieldNames = {
+                'firstName': 'First Name',
+                'lastName': 'Last Name',
+                'email': 'Email format',
+                'phone': 'Phone number',
+                'status': 'Status',
+                'source': 'Source',
+                'emailOrPhone': 'Email or Phone'
+            };
+
+            // Build list of field names with errors
+            const fieldList = errorKeys.map(key => fieldNames[key] || key).join(', ');
+
+            summaryDiv.style.display = 'block';
+            summaryDiv.innerHTML = `
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Please fix: ${fieldList}</strong>
+            `;
+        } else {
+            summaryDiv.style.display = 'none';
+        }
+    },
+
+    /**
+     * Update save button state based on validation
+     * @param {string} formType - 'createLead' or 'editLead'
+     * @param {boolean} isValid - Whether form is valid
+     */
+    updateSaveButtonState(formType, isValid) {
+        const buttonId = formType === 'createLead' ? 'create-lead-btn' : 'save-edit-btn';
+        const button = document.getElementById(buttonId);
+
+        if (button) {
+            button.disabled = !isValid;
+            if (!isValid) {
+                button.classList.add('disabled');
+                button.title = 'Please fix validation errors';
+            } else {
+                button.classList.remove('disabled');
+                button.title = '';
+            }
+        }
+    },
+
     /**
      * Load and display leads with optional filters
      * @param {number} page - Page number (1-indexed)
@@ -1328,6 +1692,9 @@ const LeadsPage = {
             // Wire the Edit tab with dropdowns
             await this.wireEditTab(lead);
 
+            // Setup real-time validation for Edit tab
+            this.setupEditLeadValidation();
+
             // Setup note creation functionality
             this.setupNoteCreation(leadId);
 
@@ -2566,6 +2933,26 @@ const LeadsPage = {
      * Handle save lead changes
      */
     async handleSaveLead() {
+        // Validate form before proceeding using centralized FormValidator
+        const fieldRules = {
+            first_name: { required: true, minLength: 2, label: 'First Name' },
+            last_name: { required: true, minLength: 2, label: 'Last Name' },
+            email: { email: true, optional: true, label: 'Email' },
+            phone: { phone: true, optional: true, label: 'Phone' },
+            status_id: { required: true, label: 'Status' },
+            source_id: { required: true, label: 'Source' }
+        };
+
+        const isValid = this.formValidator.validateForm('edit-lead-form', fieldRules, {
+            emailOrPhone: true,
+            errorSummaryId: 'edit-lead-error-summary'
+        });
+
+        if (!isValid) {
+            console.log('Edit form validation failed');
+            return;
+        }
+
         const saveButton = document.getElementById('save-lead-btn');
 
         try {
@@ -2734,6 +3121,104 @@ const LeadsPage = {
         }
     },
 
+    /**
+     * Setup real-time validation for Create Lead modal using centralized FormValidator
+     * Validates on keyup for live feedback as user types
+     */
+    setupCreateLeadValidation() {
+        const form = document.getElementById('add-lead-form');
+        if (!form) return;
+
+        console.log('Setting up Create Lead validation with FormValidator');
+
+        // Define field validation rules
+        const fieldRules = {
+            first_name: {
+                required: true,
+                minLength: 2,
+                label: 'First Name'
+            },
+            last_name: {
+                required: true,
+                minLength: 2,
+                label: 'Last Name'
+            },
+            email: {
+                email: true,
+                optional: true,
+                label: 'Email'
+            },
+            phone: {
+                phone: true,
+                optional: true,
+                label: 'Phone'
+            },
+            status_id: {
+                required: true,
+                label: 'Status'
+            },
+            source_id: {
+                required: true,
+                label: 'Source'
+            }
+        };
+
+        // Setup validation with centralized FormValidator
+        this.formValidator.setupValidation('add-lead-form', fieldRules, {
+            errorSummaryId: 'create-lead-error-summary',
+            emailOrPhone: true  // Require at least one of email or phone
+        });
+    },
+
+    /**
+     * Setup real-time validation for Edit tab using centralized FormValidator
+     * Validates on keyup for live feedback as user types
+     */
+    setupEditLeadValidation() {
+        const form = document.getElementById('edit-lead-form');
+        if (!form) return;
+
+        console.log('Setting up Edit Lead validation with FormValidator');
+
+        // Define field validation rules (same as create form)
+        const fieldRules = {
+            first_name: {
+                required: true,
+                minLength: 2,
+                label: 'First Name'
+            },
+            last_name: {
+                required: true,
+                minLength: 2,
+                label: 'Last Name'
+            },
+            email: {
+                email: true,
+                optional: true,
+                label: 'Email'
+            },
+            phone: {
+                phone: true,
+                optional: true,
+                label: 'Phone'
+            },
+            status_id: {
+                required: true,
+                label: 'Status'
+            },
+            source_id: {
+                required: true,
+                label: 'Source'
+            }
+        };
+
+        // Setup validation with centralized FormValidator
+        this.formValidator.setupValidation('edit-lead-form', fieldRules, {
+            errorSummaryId: 'edit-lead-error-summary',
+            emailOrPhone: true  // Require at least one of email or phone
+        });
+    },
+
     async createLead() {
         console.log('=== CREATE LEAD STARTED ===');
 
@@ -2743,6 +3228,26 @@ const LeadsPage = {
 
         errorDiv.style.display = 'none';
         successDiv.style.display = 'none';
+
+        // Validate form before proceeding using centralized FormValidator
+        const fieldRules = {
+            first_name: { required: true, minLength: 2, label: 'First Name' },
+            last_name: { required: true, minLength: 2, label: 'Last Name' },
+            email: { email: true, optional: true, label: 'Email' },
+            phone: { phone: true, optional: true, label: 'Phone' },
+            status_id: { required: true, label: 'Status' },
+            source_id: { required: true, label: 'Source' }
+        };
+
+        const isValid = this.formValidator.validateForm('add-lead-form', fieldRules, {
+            emailOrPhone: true,
+            errorSummaryId: 'create-lead-error-summary'
+        });
+
+        if (!isValid) {
+            console.log('Form validation failed');
+            return;
+        }
 
         if (createButton) {
             createButton.disabled = true;
@@ -2765,6 +3270,7 @@ const LeadsPage = {
             const sourceId = this.addLeadDropdowns.source.getValue();
             const assignedToUserId = this.addLeadDropdowns.user.getValue();
 
+            // Note: Validation already checked these, but keep for defensive programming
             if (!firstName) {
                 throw new Error('First name is required');
             }
@@ -3532,11 +4038,31 @@ document.addEventListener('DOMContentLoaded', async function() {
         userNameElement.textContent = displayName || 'User';
     }
 
+    // Initialize centralized form validator
+    LeadsPage.formValidator = new FormValidator();
+
     // Initialize filters first
     await LeadsPage.initializeFilters();
 
-    // Initialize Add Lead modal dropdowns
+    // Initialize Add Lead modal dropdowns (must be before validation setup)
     await LeadsPage.initializeAddLeadModal();
+
+    // Setup real-time validation for Create Lead modal (AFTER dropdowns are initialized)
+    // Wait a bit for dropdowns to fully render in DOM
+    setTimeout(() => {
+        LeadsPage.setupCreateLeadValidation();
+    }, 100);
+
+    // Clear validation when Add Lead modal is opened
+    const addLeadModal = document.getElementById('addLeadModal');
+    if (addLeadModal) {
+        addLeadModal.addEventListener('shown.bs.modal', () => {
+            // Clear validation state when modal opens
+            if (LeadsPage.formValidator) {
+                LeadsPage.formValidator.clearValidation('add-lead-form');
+            }
+        });
+    }
 
     // Load statuses and users for inline editing (before loading leads)
     await LeadsPage.loadStatusesForInlineEdit();

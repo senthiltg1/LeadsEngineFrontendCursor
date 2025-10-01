@@ -757,6 +757,35 @@ h6 { font-size: var(--font-size-base); }
   filter: brightness(0.8);
 }
 
+/* Form Validation Icons */
+.validation-icon {
+  z-index: 10;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+/* Add padding to inputs to make room for icons */
+.form-control.is-valid,
+.form-control.is-invalid {
+  padding-right: 2.5rem;
+}
+
+/* Custom validation feedback styling */
+.invalid-feedback {
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
 /* Utility Classes */
 .text-gradient {
   background: linear-gradient(135deg, var(--primary-blue), var(--mint-green));

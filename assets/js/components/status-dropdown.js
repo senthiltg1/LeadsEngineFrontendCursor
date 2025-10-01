@@ -62,9 +62,9 @@ function createStatusDropdown(selector, options = {}) {
             return;
         }
 
-        // Create select element
+        // Create select element with name attribute for form validation
         const selectId = `status-dropdown-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        let html = `<select id="${selectId}" class="${config.className}" ${config.disabled ? 'disabled' : ''}>`;
+        let html = `<select id="${selectId}" name="status_id" class="${config.className}" ${config.disabled ? 'disabled' : ''}>`;
 
         // Add empty option if configured
         if (config.includeEmpty) {

@@ -395,25 +395,28 @@
                         <!-- Edit Tab -->
                         <div class="tab-pane fade" id="edit" role="tabpanel">
                             <form id="edit-lead-form">
+                                <!-- Error Summary -->
+                                <div id="edit-lead-error-summary" class="alert alert-danger" style="display: none;"></div>
+
                                 <div class="row mb-3">
                                     <div class="col-md-6">
                                         <label class="form-label">First Name</label>
-                                        <input type="text" class="form-control" id="edit-first-name">
+                                        <input type="text" class="form-control" id="edit-first-name" name="first_name">
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label">Last Name</label>
-                                        <input type="text" class="form-control" id="edit-last-name">
+                                        <input type="text" class="form-control" id="edit-last-name" name="last_name">
                                     </div>
                                 </div>
 
                                 <div class="row mb-3">
                                     <div class="col-md-6">
                                         <label class="form-label">Email</label>
-                                        <input type="email" class="form-control" id="edit-email">
+                                        <input type="email" class="form-control" id="edit-email" name="email">
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label">Phone</label>
-                                        <input type="text" class="form-control" id="edit-phone">
+                                        <input type="text" class="form-control" id="edit-phone" name="phone">
                                     </div>
                                 </div>
 
@@ -542,26 +545,29 @@
                 </div>
                 <div class="modal-body">
                     <form id="add-lead-form">
+                        <!-- Error Summary -->
+                        <div id="create-lead-error-summary" class="alert alert-danger" style="display: none;"></div>
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">First Name <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="add-first-name" required>
+                                <input type="text" class="form-control" id="add-first-name" name="first_name" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Last Name <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="add-last-name" required>
+                                <input type="text" class="form-control" id="add-last-name" name="last_name" required>
                             </div>
                         </div>
 
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">Email</label>
-                                <input type="email" class="form-control" id="add-email">
+                                <input type="email" class="form-control" id="add-email" name="email">
                                 <small class="text-muted">Email OR Phone is required</small>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Phone</label>
-                                <input type="tel" class="form-control" id="add-phone">
+                                <input type="tel" class="form-control" id="add-phone" name="phone">
                                 <small class="text-muted">Email OR Phone is required</small>
                             </div>
                         </div>
@@ -676,6 +682,7 @@
     <script src="assets/js/bus.js"></script>
     <script src="assets/js/api.js"></script>
     <script src="assets/js/auth.js"></script>
+    <script src="assets/js/validation.js"></script>
     <script src="assets/js/components/status-dropdown.js"></script>
     <script src="assets/js/components/source-dropdown.js"></script>
     <script src="assets/js/components/user-dropdown.js"></script>
