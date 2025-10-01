@@ -183,7 +183,7 @@
     </div>
 
     <!-- Lead Detail Modal -->
-    <div class="modal fade" id="leadDetailModal" tabindex="-1" aria-labelledby="leadDetailModalLabel" aria-hidden="true">
+    <div class="modal fade" id="leadDetailModal" tabindex="-1" aria-labelledby="leadDetailModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
@@ -386,6 +386,32 @@
                                         <label class="form-label">Assigned To</label>
                                         <div id="edit-user-dropdown"></div>
                                     </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Budget Band</label>
+                                        <select class="form-select" id="edit-budget-band">
+                                            <option value="UNKNOWN">Unknown</option>
+                                            <option value="LOW">Low ($0-$5K)</option>
+                                            <option value="MID">Mid ($5K-$15K)</option>
+                                            <option value="HIGH">High ($15K+)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Insurance Provider</label>
+                                        <input type="text" class="form-control" id="edit-insurance" placeholder="e.g., Delta Dental">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Zip Code</label>
+                                        <input type="text" class="form-control" id="edit-zip" maxlength="10" placeholder="e.g., 12345">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Quick Notes (Internal)</label>
+                                    <textarea class="form-control" id="edit-notes" rows="3" placeholder="Quick internal notes..."></textarea>
+                                    <small class="text-muted">Use the Notes tab for detailed, timestamped notes.</small>
                                 </div>
 
                                 <div class="mt-3">

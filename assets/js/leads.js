@@ -7,6 +7,7 @@ const LeadsPage = {
     currentPage: 1,
     pageSize: Config.DEFAULT_PAGE_SIZE || 50,
     allLeads: [],
+    userMap: {},
 
     /**
      * Load and display leads
@@ -16,14 +17,41 @@ const LeadsPage = {
             // Show loading state
             this.showLoadingState();
 
-            // Fetch leads with relationships
+            // Fetch leads and users in parallel
             const params = {
                 skip: (page - 1) * this.pageSize,
                 limit: this.pageSize
             };
 
-            const response = await API.get(Config.ENDPOINTS.LEAD.WITH_RELATIONSHIPS, params);
-            this.allLeads = response.records || [];
+            const [leadsResponse, usersResponse] = await Promise.all([
+                API.get(Config.ENDPOINTS.LEAD.WITH_RELATIONSHIPS, params),
+                API.get(Config.ENDPOINTS.USER.LIST)
+            ]);
+
+            this.allLeads = leadsResponse.records || [];
+            const users = usersResponse.records || [];
+
+            console.log('Loaded users for lead list:', users);
+
+            // Create user mapping
+            this.userMap = {};
+            users.forEach(user => {
+                let userName = 'Unknown User';
+                if (user.full_name) {
+                    userName = user.full_name;
+                } else if (user.first_name && user.last_name) {
+                    userName = `${user.first_name} ${user.last_name}`;
+                } else if (user.first_name) {
+                    userName = user.first_name;
+                } else if (user.username) {
+                    userName = user.username;
+                } else if (user.email) {
+                    userName = user.email;
+                }
+                this.userMap[user.id] = userName;
+            });
+
+            console.log('User mapping created:', this.userMap);
 
             // Clear existing table rows
             this.clearTable();
@@ -204,15 +232,47 @@ const LeadsPage = {
      * @returns {String} User name
      */
     getAssignedUser(lead) {
+        // Try various possible structures from with-relationships endpoint
+
+        // Option 1: assigned_user object (relationship loaded)
         if (lead.assigned_user) {
             const user = lead.assigned_user;
             if (user.full_name) return user.full_name;
             if (user.first_name && user.last_name) {
                 return `${user.first_name} ${user.last_name}`;
             }
+            if (user.first_name) return user.first_name;
             if (user.username) return user.username;
+            if (user.email) return user.email;
         }
+
+        // Option 2: assigned_to object (alternative relationship name)
+        if (lead.assigned_to) {
+            const user = lead.assigned_to;
+            if (user.full_name) return user.full_name;
+            if (user.first_name && user.last_name) {
+                return `${user.first_name} ${user.last_name}`;
+            }
+            if (user.first_name) return user.first_name;
+            if (user.username) return user.username;
+            if (user.email) return user.email;
+        }
+
+        // Option 3: Direct name field (if backend includes it)
         if (lead.assigned_to_name) return lead.assigned_to_name;
+        if (lead.assigned_user_name) return lead.assigned_user_name;
+
+        // Option 4: Look up in user mapping by ID
+        if (lead.assigned_to_user_id && this.userMap && this.userMap[lead.assigned_to_user_id]) {
+            return this.userMap[lead.assigned_to_user_id];
+        }
+
+        // Option 5: If we have an ID but no mapping entry, show the ID
+        if (lead.assigned_to_user_id) {
+            return `User #${lead.assigned_to_user_id}`;
+        }
+
+        // No assignment
         return 'Unassigned';
     },
 
@@ -263,6 +323,52 @@ const LeadsPage = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+
+    /**
+     * Format budget band for display
+     * @param {String} budgetBand - Budget band value
+     * @returns {String} Formatted budget band
+     */
+    formatBudgetBand(budgetBand) {
+        const bands = {
+            'LOW': '<span class="badge bg-info">Low ($0-$5K)</span>',
+            'MID': '<span class="badge bg-primary">Mid ($5K-$15K)</span>',
+            'HIGH': '<span class="badge bg-success">High ($15K+)</span>',
+            'UNKNOWN': '<span class="badge bg-secondary">Unknown</span>'
+        };
+        return bands[budgetBand] || bands['UNKNOWN'];
+    },
+
+    /**
+     * Get user name from user object
+     * @param {Object} user - User object
+     * @returns {String} User name
+     */
+    getUserName(user) {
+        if (!user) return null;
+
+        if (user.full_name) {
+            return this.escapeHtml(user.full_name);
+        }
+
+        if (user.first_name && user.last_name) {
+            return this.escapeHtml(`${user.first_name} ${user.last_name}`);
+        }
+
+        if (user.first_name) {
+            return this.escapeHtml(user.first_name);
+        }
+
+        if (user.username) {
+            return this.escapeHtml(user.username);
+        }
+
+        if (user.email) {
+            return this.escapeHtml(user.email);
+        }
+
+        return null;
     },
 
     /**
@@ -542,27 +648,118 @@ const LeadsPage = {
                 </div>
             </div>
 
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Business Details</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-sm-5"><strong>Budget Band:</strong></div>
+                                <div class="col-sm-7">${this.formatBudgetBand(lead.budget_band)}</div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-sm-5"><strong>Insurance:</strong></div>
+                                <div class="col-sm-7">${this.escapeHtml(lead.insurance || 'N/A')}</div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-sm-5"><strong>Zip Code:</strong></div>
+                                <div class="col-sm-7">${this.escapeHtml(lead.zip || 'N/A')}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Compliance</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row mb-3">
+                                <div class="col-sm-5"><strong>Consent Given:</strong></div>
+                                <div class="col-sm-7">
+                                    ${lead.consent_ts ? `
+                                        <i class="fas fa-check-circle text-success me-1"></i>
+                                        ${this.formatDate(lead.consent_ts)}
+                                    ` : '<span class="text-muted">No consent recorded</span>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">Marketing Attribution</h6>
+                        </div>
+                        <div class="card-body">
+                            ${lead.utm_source || lead.utm_medium || lead.utm_campaign || lead.utm_term || lead.utm_content ? `
+                                ${lead.utm_source ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>UTM Source:</strong></div>
+                                    <div class="col-sm-7"><code class="text-primary">${this.escapeHtml(lead.utm_source)}</code></div>
+                                </div>` : ''}
+                                ${lead.utm_medium ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>UTM Medium:</strong></div>
+                                    <div class="col-sm-7"><code class="text-primary">${this.escapeHtml(lead.utm_medium)}</code></div>
+                                </div>` : ''}
+                                ${lead.utm_campaign ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>UTM Campaign:</strong></div>
+                                    <div class="col-sm-7"><code class="text-primary">${this.escapeHtml(lead.utm_campaign)}</code></div>
+                                </div>` : ''}
+                                ${lead.utm_term ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>UTM Term:</strong></div>
+                                    <div class="col-sm-7"><code class="text-primary">${this.escapeHtml(lead.utm_term)}</code></div>
+                                </div>` : ''}
+                                ${lead.utm_content ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>UTM Content:</strong></div>
+                                    <div class="col-sm-7"><code class="text-primary">${this.escapeHtml(lead.utm_content)}</code></div>
+                                </div>` : ''}
+                                ${lead.campaign_id ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>Campaign ID:</strong></div>
+                                    <div class="col-sm-7">${lead.campaign_id}</div>
+                                </div>` : ''}
+                                ${lead.adgroup_id ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>Ad Group ID:</strong></div>
+                                    <div class="col-sm-7">${lead.adgroup_id}</div>
+                                </div>` : ''}
+                                ${lead.ext_lead_ref ? `
+                                <div class="row mb-2">
+                                    <div class="col-sm-5"><strong>External Ref:</strong></div>
+                                    <div class="col-sm-7"><code class="text-info">${this.escapeHtml(lead.ext_lead_ref)}</code></div>
+                                </div>` : ''}
+                            ` : '<p class="text-muted mb-0">No marketing attribution data</p>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-header">
                     <h6 class="card-title mb-0">Additional Information</h6>
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <strong>Lead ID:</strong> ${lead.id || 'N/A'}
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <strong>External ID:</strong> ${lead.external_id || 'N/A'}
+                        <div class="col-md-4 mb-3">
+                            <strong>Created By:</strong> ${this.getUserName(lead.created_by) || 'System'}
                         </div>
-                        ${lead.company ? `
-                        <div class="col-md-6 mb-3">
-                            <strong>Company:</strong> ${this.escapeHtml(lead.company)}
+                        <div class="col-md-4 mb-3">
+                            <strong>Updated By:</strong> ${this.getUserName(lead.updated_by) || 'System'}
                         </div>
-                        ` : ''}
                         ${lead.notes ? `
                         <div class="col-12 mb-3">
-                            <strong>Notes:</strong>
-                            <div class="mt-2">${this.escapeHtml(lead.notes)}</div>
+                            <strong>Quick Notes:</strong>
+                            <div class="mt-2 p-2 bg-light rounded">${this.escapeHtml(lead.notes)}</div>
                         </div>
                         ` : ''}
                     </div>
@@ -1304,6 +1501,12 @@ const LeadsPage = {
             $('#edit-email').val(leadData.email || leadData.primary_email || '');
             $('#edit-phone').val(leadData.phone || leadData.primary_phone || '');
 
+            // Populate new fields
+            $('#edit-budget-band').val(leadData.budget_band || 'UNKNOWN');
+            $('#edit-insurance').val(leadData.insurance || '');
+            $('#edit-zip').val(leadData.zip || '');
+            $('#edit-notes').val(leadData.notes || '');
+
             // Set dropdown values
             if (leadData.status_id) {
                 statusDropdown.setValue(leadData.status_id);
@@ -1391,6 +1594,12 @@ const LeadsPage = {
             const email = $('#edit-email').val().trim();
             const phone = $('#edit-phone').val().trim();
 
+            // Get new fields
+            const budgetBand = $('#edit-budget-band').val();
+            const insurance = $('#edit-insurance').val().trim();
+            const zip = $('#edit-zip').val().trim();
+            const notes = $('#edit-notes').val().trim();
+
             // Get IDs from dropdowns
             const statusId = this.editDropdowns.status.getValue();
             const sourceId = this.editDropdowns.source.getValue();
@@ -1404,7 +1613,11 @@ const LeadsPage = {
                 phone: phone,
                 status_id: statusId,
                 source_id: sourceId,
-                assigned_to_user_id: assignedToUserId
+                assigned_to_user_id: assignedToUserId,
+                budget_band: budgetBand,
+                insurance: insurance,
+                zip: zip,
+                notes: notes
             };
 
             // Log payload for verification
