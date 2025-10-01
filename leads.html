@@ -83,6 +83,13 @@
                 <p class="text-muted">Manage and track all your dental practice leads</p>
             </div>
             <div class="col-md-6 text-end">
+                <!-- TODO: Only show this toggle to admin roles 1 and 2 -->
+                <div class="form-check form-switch d-inline-block me-3" style="font-size: 1.1rem;">
+                    <input class="form-check-input" type="checkbox" id="show-archived-toggle" style="cursor: pointer;">
+                    <label class="form-check-label" for="show-archived-toggle" style="cursor: pointer;">
+                        Show Archived Leads
+                    </label>
+                </div>
                 <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#addLeadModal">
                     <i class="fas fa-plus me-2"></i>
                     Add New Lead
@@ -181,8 +188,27 @@
             <div class="card-body p-0">
                 <!-- Records counter and pagination controls -->
                 <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-                    <div>
+                    <div class="d-flex align-items-center gap-3">
                         <span class="text-muted" id="records-counter">Loading leads...</span>
+                        <!-- Bulk Actions Dropdown -->
+                        <div class="dropdown" id="bulk-actions-container" style="display: none;">
+                            <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="bulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-tasks me-1"></i>
+                                Bulk Actions
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown">
+                                <!-- Active leads actions -->
+                                <li class="active-only-action"><a class="dropdown-item" href="#" id="bulk-change-status"><i class="fas fa-flag me-2"></i>Change Status</a></li>
+                                <li class="active-only-action"><a class="dropdown-item" href="#" id="bulk-assign-user"><i class="fas fa-user me-2"></i>Assign To User</a></li>
+                                <li class="active-only-action"><a class="dropdown-item text-warning" href="#" id="bulk-archive"><i class="fas fa-archive me-2"></i>Archive Selected</a></li>
+                                <!-- Archived leads actions -->
+                                <li class="archived-only-action" style="display: none;"><a class="dropdown-item text-success" href="#" id="bulk-restore"><i class="fas fa-undo me-2"></i>Restore Selected</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" id="bulk-clear-selection"><i class="fas fa-times me-2"></i>Clear Selection</a></li>
+                            </ul>
+                        </div>
+                        <!-- Selection Counter -->
+                        <span class="badge bg-primary" id="selection-counter" style="display: none;">0 selected</span>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <label class="text-muted mb-0">Rows per page:</label>
@@ -641,31 +667,205 @@
     </div>
 
     <!-- ============================================
-         Delete Confirmation Modal
+         Archive Confirmation Modal
          ============================================
-         Purpose: Confirm lead deletion before proceeding
-         Notes: Shows lead name and cannot be undone warning
+         Purpose: Confirm lead archiving (soft delete) before proceeding
+         Notes: Shows lead name - can be restored by admin later
          ============================================ -->
     <div class="modal fade" id="deleteLeadModal" tabindex="-1" aria-labelledby="deleteLeadModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="deleteLeadModalLabel">Delete Lead?</h5>
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="deleteLeadModalLabel">
+                        <i class="fas fa-archive me-2"></i>Archive Lead?
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-3">Are you sure you want to delete <strong id="delete-lead-name"></strong>?</p>
-                    <p class="text-danger mb-0">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
-                        This action cannot be undone.
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> Archived leads can be restored by an administrator.
+                    </div>
+                    <p class="mb-3">Archive <strong id="delete-lead-name"></strong>?</p>
+                    <p class="text-muted mb-0">
+                        This lead will be hidden from the main list but not permanently deleted.
                     </p>
                     <!-- Error message container -->
                     <div id="delete-lead-error" class="alert alert-danger mt-3" style="display: none;"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="delete-cancel-btn">Cancel</button>
-                    <button type="button" class="btn btn-danger" id="delete-confirm-btn">
-                        <i class="fas fa-trash me-1"></i>Delete
+                    <button type="button" class="btn btn-warning" id="delete-confirm-btn">
+                        <i class="fas fa-archive me-1"></i>Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Assign To User Modal -->
+    <div class="modal fade" id="bulkAssignModal" tabindex="-1" aria-labelledby="bulkAssignModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bulkAssignModalLabel">
+                        <i class="fas fa-user me-2"></i>Assign Selected Leads
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">
+                        Assign <strong><span id="bulk-assign-count">0</span> selected lead(s)</strong> to:
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">Assign To User <span class="text-danger">*</span></label>
+                        <div id="bulk-assign-dropdown"></div>
+                    </div>
+                    <div id="bulk-assign-error" class="alert alert-danger" style="display: none;"></div>
+                    <div id="bulk-assign-progress" class="progress" style="display: none; height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">
+                            <span id="bulk-assign-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="bulk-assign-confirm-btn">
+                        <i class="fas fa-check me-1"></i>Assign Leads
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Archive Confirmation Modal -->
+    <div class="modal fade" id="bulkArchiveModal" tabindex="-1" aria-labelledby="bulkArchiveModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="bulkArchiveModalLabel">
+                        <i class="fas fa-archive me-2"></i>Confirm Archive
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> Archived leads can be restored by an administrator.
+                    </div>
+                    <p class="mb-3">
+                        Archive <strong><span id="bulk-archive-count">0</span> selected lead(s)</strong>?
+                    </p>
+                    <p class="text-muted mb-0">
+                        These leads will be hidden from the main list but not permanently deleted.
+                    </p>
+                    <div id="bulk-archive-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                    <div id="bulk-archive-progress" class="progress mt-3" style="display: none; height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%">
+                            <span id="bulk-archive-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="bulk-archive-confirm-btn">
+                        <i class="fas fa-archive me-1"></i>Archive Leads
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Restore Confirmation Modal -->
+    <div class="modal fade" id="bulkRestoreModal" tabindex="-1" aria-labelledby="bulkRestoreModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="bulkRestoreModalLabel">
+                        <i class="fas fa-undo me-2"></i>Restore Archived Leads
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">
+                        Restore <strong><span id="bulk-restore-count">0</span> archived lead(s)</strong>?
+                    </p>
+                    <p class="text-muted mb-0">
+                        These leads will reappear in the active lead list.
+                    </p>
+                    <div id="bulk-restore-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                    <div id="bulk-restore-progress" class="progress mt-3" style="display: none; height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%">
+                            <span id="bulk-restore-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="bulk-restore-confirm-btn">
+                        <i class="fas fa-undo me-1"></i>Restore Leads
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Single Lead Restore Confirmation Modal -->
+    <div class="modal fade" id="restoreLeadModal" tabindex="-1" aria-labelledby="restoreLeadModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="restoreLeadModalLabel">
+                        <i class="fas fa-undo me-2"></i>Restore Lead?
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">Restore <strong id="restore-lead-name"></strong>?</p>
+                    <p class="text-muted mb-0">
+                        This lead will reappear in the active lead list.
+                    </p>
+                    <div id="restore-lead-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="restore-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-success" id="restore-confirm-btn">
+                        <i class="fas fa-undo me-1"></i>Restore
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Status Change Modal -->
+    <div class="modal fade" id="bulkStatusModal" tabindex="-1" aria-labelledby="bulkStatusModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bulkStatusModalLabel">
+                        <i class="fas fa-flag me-2"></i>Change Status for Selected Leads
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">
+                        Change status for <strong><span id="bulk-status-count">0</span> selected lead(s)</strong>
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">New Status <span class="text-danger">*</span></label>
+                        <div id="bulk-status-dropdown"></div>
+                    </div>
+                    <div id="bulk-status-error" class="alert alert-danger" style="display: none;"></div>
+                    <div id="bulk-status-progress" class="progress" style="display: none; height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">
+                            <span id="bulk-status-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="bulk-status-confirm-btn">
+                        <i class="fas fa-check me-1"></i>Update Status
                     </button>
                 </div>
             </div>
@@ -699,9 +899,63 @@
             // Filters are now handled by leads.js via initializeFilters()
             // Old client-side filtering removed in favor of server-side filtering
 
-            // Select all functionality
+            // Select all functionality - updated to use bulk actions
             $('#selectAll').on('change', function() {
-                $('tbody input[type="checkbox"]').prop('checked', this.checked);
+                LeadsPage.handleSelectAllChange(this.checked);
+            });
+
+            // Bulk action buttons
+            $('#bulk-change-status').on('click', function(e) {
+                e.preventDefault();
+                LeadsPage.showBulkStatusModal();
+            });
+
+            $('#bulk-assign-user').on('click', function(e) {
+                e.preventDefault();
+                LeadsPage.showBulkAssignModal();
+            });
+
+            $('#bulk-archive').on('click', function(e) {
+                e.preventDefault();
+                LeadsPage.showBulkArchiveModal();
+            });
+
+            $('#bulk-clear-selection').on('click', function(e) {
+                e.preventDefault();
+                LeadsPage.clearSelection();
+            });
+
+            // Bulk action modal confirm buttons
+            $('#bulk-status-confirm-btn').on('click', function() {
+                LeadsPage.executeBulkStatusChange();
+            });
+
+            $('#bulk-assign-confirm-btn').on('click', function() {
+                LeadsPage.executeBulkAssign();
+            });
+
+            $('#bulk-archive-confirm-btn').on('click', function() {
+                LeadsPage.executeBulkArchive();
+            });
+
+            // Bulk restore button
+            $('#bulk-restore').on('click', function(e) {
+                e.preventDefault();
+                LeadsPage.showBulkRestoreModal();
+            });
+
+            $('#bulk-restore-confirm-btn').on('click', function() {
+                LeadsPage.executeBulkRestore();
+            });
+
+            // Single restore confirm button
+            $('#restore-confirm-btn').on('click', function() {
+                LeadsPage.restoreLead();
+            });
+
+            // Toggle archived/active view checkbox
+            $('#show-archived-toggle').on('change', function() {
+                LeadsPage.toggleArchivedView();
             });
 
             // Export functionality (placeholder)

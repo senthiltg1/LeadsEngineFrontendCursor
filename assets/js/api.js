@@ -206,11 +206,19 @@ const API = {
      * DELETE request
      * Handles empty/non-JSON responses (e.g., 204 No Content)
      * @param {string} endpoint - API endpoint
+     * @param {object} data - Optional request body (for batch operations)
      * @returns {Promise<object>}
      */
-    async delete(endpoint) {
-        return this.request(endpoint, {
+    async delete(endpoint, data = null) {
+        const options = {
             method: 'DELETE'
-        });
+        };
+
+        // Add body if data provided (for batch delete endpoints)
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        return this.request(endpoint, options);
     }
 };

@@ -67,6 +67,10 @@
 | PUT | /api/v1/lead/{id} | update_lead_api_v1_lead__id__put |
 | GET | /api/v1/lead/{id}/timeline | lead_timeline_api_v1_lead__id__timeline_get |
 | DELETE | /api/v1/lead/{id}/hard-delete | delete_lead_api_v1_lead__id__hard_delete_delete |
+| POST | /api/v1/lead/activate | batch_activate_leads_api_v1_lead_activate_post |
+| POST | /api/v1/lead/deactivate | batch_deactivate_leads_api_v1_lead_deactivate_post |
+| DELETE | /api/v1/lead/soft-delete | batch_soft_delete_leads_api_v1_lead_soft_delete_delete |
+| POST | /api/v1/lead/restore | batch_restore_leads_api_v1_lead_restore_post |
 | PATCH | /api/v1/lead/{id}/assign | assign_lead_api_v1_lead__id__assign_patch |
 | POST | /api/v1/lead/{id}/nurture | queue_nurture_api_v1_lead__id__nurture_post |
 | POST | /api/v1/lead/{record_id}/nurture/pause | pause_lead_nurture_api_v1_lead__record_id__nurture_pause_post |

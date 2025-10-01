@@ -55,7 +55,12 @@ const Config = {
             WITH_RELATIONSHIPS: '/api/v1/lead/with-relationships',
             STATS: '/api/v1/lead/stats',
             TIMELINE: '/api/v1/lead/{id}/timeline',
-            ASSIGN: '/api/v1/lead/{id}/assign'
+            ASSIGN: '/api/v1/lead/{id}/assign',
+            BATCH_SOFT_DELETE: '/api/v1/lead/soft-delete',
+            BATCH_RESTORE: '/api/v1/lead/restore',
+            BATCH_ACTIVATE: '/api/v1/lead/activate',
+            BATCH_DEACTIVATE: '/api/v1/lead/deactivate',
+            ARCHIVED: '/api/v1/lead/archived'
         },
         USER: {
             LIST: '/api/v1/user/',

@@ -65,7 +65,8 @@ const LeadsPage = {
         status_id: null,
         source_id: null,
         date_from: '',
-        date_to: ''
+        date_to: '',
+        deleted: false  // Show archived leads when true
     },
 
     // Filter dropdown instances
@@ -87,6 +88,16 @@ const LeadsPage = {
 
     // Form validator instance (centralized validation module)
     formValidator: null,
+
+    // Bulk actions state
+    selectedLeadIds: new Set(),
+    bulkStatusDropdown: null,
+    bulkAssignDropdown: null,
+
+    // Archived leads state
+    showingArchived: false,
+    restoreModal: null,
+    leadToRestore: null,
 
     /**
      * Legacy validators object - kept for backward compatibility
@@ -484,6 +495,9 @@ const LeadsPage = {
             if (activeFilters.date_to) {
                 params.date_to = activeFilters.date_to;
             }
+            if (activeFilters.deleted) {
+                params.deleted = true;
+            }
 
             console.log('=== LOADING LEADS WITH FILTERS ===');
             console.log('Page:', page);
@@ -866,6 +880,9 @@ const LeadsPage = {
 
         // Setup phone/email click handlers
         this.setupContactActionHandlers();
+
+        // Setup checkbox change handlers for bulk actions
+        this.setupCheckboxHandlers();
 
         // Update records counter
         this.updateRecordsCounter(this.displayedLeads.length, leads.length);
@@ -1250,9 +1267,10 @@ const LeadsPage = {
 
         // Build row HTML
         tr.innerHTML = `
-            <td><input type="checkbox" class="form-check-input"></td>
+            <td><input type="checkbox" class="form-check-input lead-checkbox" data-lead-id="${lead.id}"></td>
             <td>
                 <span class="badge bg-secondary">#${leadId}</span>
+                ${lead.deleted_at ? '<span class="badge bg-warning text-dark ms-1">ARCHIVED</span>' : ''}
             </td>
             <td>
                 <div class="fw-semibold">${this.escapeHtml(name)}</div>
@@ -1341,19 +1359,35 @@ const LeadsPage = {
                             title="View Lead">
                         <i class="fas fa-eye"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary edit-lead-btn"
-                            data-lead-id="${lead.id || ''}"
-                            title="Edit Lead">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger delete-lead-btn"
-                            data-lead-id="${lead.id || ''}"
-                            title="Delete Lead">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    ${this.showingArchived ? `
+                        <!-- Archived lead actions: only restore button -->
+                        <button class="btn btn-sm btn-outline-success restore-lead-btn"
+                                data-lead-id="${lead.id || ''}"
+                                title="Restore Lead">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                    ` : `
+                        <!-- Active lead actions: view, edit, archive -->
+                        <button class="btn btn-sm btn-outline-secondary edit-lead-btn"
+                                data-lead-id="${lead.id || ''}"
+                                title="Edit Lead">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning archive-lead-btn"
+                                data-lead-id="${lead.id || ''}"
+                                title="Archive Lead">
+                            <i class="fas fa-archive"></i>
+                        </button>
+                    `}
                 </div>
             </td>
         `;
+
+        // Apply muted styling for archived leads (grayed out)
+        if (lead.deleted_at) {
+            tr.style.opacity = '0.6';
+            tr.style.backgroundColor = '#f8f9fa';
+        }
 
         return tr;
     },
@@ -3350,6 +3384,692 @@ const LeadsPage = {
     },
 
     /**
+     * ============================================================================
+     * BULK ACTIONS
+     * ============================================================================
+     */
+
+    /**
+     * Update selection counter and bulk actions visibility
+     */
+    updateBulkActionsUI() {
+        const count = this.selectedLeadIds.size;
+        const counter = document.getElementById('selection-counter');
+        const container = document.getElementById('bulk-actions-container');
+
+        if (count > 0) {
+            counter.textContent = `${count} selected`;
+            counter.style.display = 'inline-block';
+            container.style.display = 'inline-block';
+        } else {
+            counter.style.display = 'none';
+            container.style.display = 'none';
+        }
+    },
+
+    /**
+     * Handle checkbox change for lead selection
+     */
+    handleLeadCheckboxChange(leadId, isChecked) {
+        if (isChecked) {
+            this.selectedLeadIds.add(parseInt(leadId));
+        } else {
+            this.selectedLeadIds.delete(parseInt(leadId));
+        }
+        this.updateBulkActionsUI();
+    },
+
+    /**
+     * Handle select all checkbox
+     */
+    handleSelectAllChange(isChecked) {
+        const checkboxes = document.querySelectorAll('tbody input[type="checkbox"][data-lead-id]');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = isChecked;
+            const leadId = parseInt(checkbox.getAttribute('data-lead-id'));
+            if (isChecked) {
+                this.selectedLeadIds.add(leadId);
+            } else {
+                this.selectedLeadIds.delete(leadId);
+            }
+        });
+
+        this.updateBulkActionsUI();
+    },
+
+    /**
+     * Clear all selections
+     */
+    clearSelection() {
+        this.selectedLeadIds.clear();
+        document.getElementById('selectAll').checked = false;
+        document.querySelectorAll('tbody input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+        });
+        this.updateBulkActionsUI();
+    },
+
+    /**
+     * Initialize bulk status change modal dropdown
+     */
+    async initializeBulkStatusDropdown() {
+        try {
+            this.bulkStatusDropdown = createStatusDropdown('#bulk-status-dropdown', {
+                includeEmpty: false,
+                onChange: (statusId, statusName) => {
+                    console.log('Bulk status selected:', statusId, statusName);
+                }
+            });
+
+            await this.bulkStatusDropdown.init();
+            console.log('Bulk status dropdown initialized');
+        } catch (error) {
+            console.error('Failed to initialize bulk status dropdown:', error);
+        }
+    },
+
+    /**
+     * Show bulk status change modal
+     */
+    showBulkStatusModal() {
+        const count = this.selectedLeadIds.size;
+        if (count === 0) {
+            alert('Please select at least one lead');
+            return;
+        }
+
+        // Update count in modal
+        document.getElementById('bulk-status-count').textContent = count;
+
+        // Reset modal state
+        document.getElementById('bulk-status-error').style.display = 'none';
+        document.getElementById('bulk-status-progress').style.display = 'none';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('bulkStatusModal'));
+        modal.show();
+    },
+
+    /**
+     * Execute bulk status change
+     */
+    async executeBulkStatusChange() {
+        const statusId = this.bulkStatusDropdown.getValue();
+
+        if (!statusId) {
+            const errorDiv = document.getElementById('bulk-status-error');
+            errorDiv.textContent = 'Please select a status';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        const confirmBtn = document.getElementById('bulk-status-confirm-btn');
+        const errorDiv = document.getElementById('bulk-status-error');
+        const progressDiv = document.getElementById('bulk-status-progress');
+        const progressBar = progressDiv.querySelector('.progress-bar');
+        const progressText = document.getElementById('bulk-status-progress-text');
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        confirmBtn.disabled = true;
+
+        const leadIds = Array.from(this.selectedLeadIds);
+        const total = leadIds.length;
+        let completed = 0;
+        let failed = 0;
+
+        console.log(`Starting bulk status change for ${total} leads to status ${statusId}`);
+
+        // Process each lead
+        for (const leadId of leadIds) {
+            try {
+                // Fetch full lead data first (required for PUT)
+                const leadResponse = await API.get(`${Config.ENDPOINTS.LEAD.READ}${leadId}`);
+                const lead = leadResponse.records && leadResponse.records[0] ? leadResponse.records[0] : leadResponse;
+
+                if (!lead) {
+                    console.error(`Lead ${leadId} not found`);
+                    failed++;
+                    continue;
+                }
+
+                // Update with new status_id
+                const updatePayload = {
+                    ...lead,
+                    status_id: parseInt(statusId)
+                };
+
+                // Remove computed fields that shouldn't be in PUT
+                delete updatePayload.status;
+                delete updatePayload.source;
+                delete updatePayload.assigned_user;
+                delete updatePayload.created_at;
+                delete updatePayload.updated_at;
+
+                console.log(`Updating lead ${leadId} with status ${statusId}`, updatePayload);
+
+                // Execute update
+                await API.put(`${Config.ENDPOINTS.LEAD.UPDATE}${leadId}`, updatePayload);
+
+                completed++;
+                console.log(`Successfully updated lead ${leadId}`);
+
+            } catch (error) {
+                console.error(`Failed to update lead ${leadId}:`, error);
+                failed++;
+            }
+
+            // Update progress
+            const progress = Math.round((completed + failed) / total * 100);
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${completed + failed}/${total}`;
+        }
+
+        // Show results
+        progressDiv.style.display = 'none';
+        confirmBtn.disabled = false;
+
+        if (failed > 0) {
+            errorDiv.textContent = `Updated ${completed} lead(s). Failed to update ${failed} lead(s).`;
+            errorDiv.style.display = 'block';
+        } else {
+            // Success - close modal and refresh
+            const modal = bootstrap.Modal.getInstance(document.getElementById('bulkStatusModal'));
+            modal.hide();
+
+            // Clear selection
+            this.clearSelection();
+
+            // Reload leads
+            await this.loadLeads();
+
+            // Show success message
+            this.showToast('Success', `Successfully updated ${completed} lead(s)`, 'success');
+        }
+    },
+
+    /**
+     * Initialize bulk assign user modal dropdown
+     */
+    async initializeBulkAssignDropdown() {
+        try {
+            this.bulkAssignDropdown = createUserDropdown('#bulk-assign-dropdown', {
+                includeEmpty: true,
+                emptyText: 'Unassigned',
+                onChange: (userId, userName) => {
+                    console.log('Bulk assign user selected:', userId, userName);
+                }
+            });
+
+            await this.bulkAssignDropdown.init();
+            console.log('Bulk assign dropdown initialized');
+        } catch (error) {
+            console.error('Failed to initialize bulk assign dropdown:', error);
+        }
+    },
+
+    /**
+     * Show bulk assign modal
+     */
+    showBulkAssignModal() {
+        const count = this.selectedLeadIds.size;
+        if (count === 0) {
+            alert('Please select at least one lead');
+            return;
+        }
+
+        // Update count in modal
+        document.getElementById('bulk-assign-count').textContent = count;
+
+        // Reset modal state
+        document.getElementById('bulk-assign-error').style.display = 'none';
+        document.getElementById('bulk-assign-progress').style.display = 'none';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('bulkAssignModal'));
+        modal.show();
+    },
+
+    /**
+     * Execute bulk assign
+     */
+    async executeBulkAssign() {
+        const userId = this.bulkAssignDropdown.getValue();
+
+        // Note: userId can be empty string for "Unassigned"
+        // Empty string is valid - it means unassign
+
+        const confirmBtn = document.getElementById('bulk-assign-confirm-btn');
+        const errorDiv = document.getElementById('bulk-assign-error');
+        const progressDiv = document.getElementById('bulk-assign-progress');
+        const progressBar = progressDiv.querySelector('.progress-bar');
+        const progressText = document.getElementById('bulk-assign-progress-text');
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        confirmBtn.disabled = true;
+
+        const leadIds = Array.from(this.selectedLeadIds);
+        const total = leadIds.length;
+        let completed = 0;
+        let failed = 0;
+
+        const assignedToUserId = userId ? parseInt(userId) : null;
+        console.log(`Starting bulk assign for ${total} leads to user ${assignedToUserId || 'Unassigned'}`);
+
+        // Process each lead
+        for (const leadId of leadIds) {
+            try {
+                // Fetch full lead data first (required for PUT)
+                const leadResponse = await API.get(`${Config.ENDPOINTS.LEAD.READ}${leadId}`);
+                const lead = leadResponse.records && leadResponse.records[0] ? leadResponse.records[0] : leadResponse;
+
+                if (!lead) {
+                    console.error(`Lead ${leadId} not found`);
+                    failed++;
+                    continue;
+                }
+
+                // Update with new assigned_to_user_id
+                const updatePayload = {
+                    ...lead,
+                    assigned_to_user_id: assignedToUserId
+                };
+
+                // Remove computed fields that shouldn't be in PUT
+                delete updatePayload.status;
+                delete updatePayload.source;
+                delete updatePayload.assigned_user;
+                delete updatePayload.created_at;
+                delete updatePayload.updated_at;
+
+                console.log(`Updating lead ${leadId} with user ${assignedToUserId}`, updatePayload);
+
+                // Execute update
+                await API.put(`${Config.ENDPOINTS.LEAD.UPDATE}${leadId}`, updatePayload);
+
+                completed++;
+                console.log(`Successfully assigned lead ${leadId}`);
+
+            } catch (error) {
+                console.error(`Failed to assign lead ${leadId}:`, error);
+                failed++;
+            }
+
+            // Update progress
+            const progress = Math.round((completed + failed) / total * 100);
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${completed + failed}/${total}`;
+        }
+
+        // Show results
+        progressDiv.style.display = 'none';
+        confirmBtn.disabled = false;
+
+        if (failed > 0) {
+            errorDiv.textContent = `Assigned ${completed} lead(s). Failed to assign ${failed} lead(s).`;
+            errorDiv.style.display = 'block';
+        } else {
+            // Success - close modal and refresh
+            const modal = bootstrap.Modal.getInstance(document.getElementById('bulkAssignModal'));
+            modal.hide();
+
+            // Clear selection
+            this.clearSelection();
+
+            // Reload leads
+            await this.loadLeads();
+
+            // Show success message
+            this.showToast('Success', `Successfully assigned ${completed} lead(s)`, 'success');
+        }
+    },
+
+    /**
+     * Show bulk archive confirmation modal
+     */
+    showBulkArchiveModal() {
+        const count = this.selectedLeadIds.size;
+        if (count === 0) {
+            alert('Please select at least one lead');
+            return;
+        }
+
+        // Update count in modal
+        document.getElementById('bulk-archive-count').textContent = count;
+
+        // Reset modal state
+        document.getElementById('bulk-archive-error').style.display = 'none';
+        document.getElementById('bulk-archive-progress').style.display = 'none';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('bulkArchiveModal'));
+        modal.show();
+    },
+
+    /**
+     * Execute bulk archive (soft delete)
+     * Uses batch endpoint: DELETE /api/v1/lead/soft-delete with {leads_ids: [array]}
+     * Archives leads by setting deleted_at timestamp and is_active=false
+     *
+     * TODO: Add 'View Archived Leads' and restore functionality in admin section
+     * - Admin can view archived leads
+     * - Admin can restore using POST /api/v1/lead/restore with {leads_ids: [array]}
+     */
+    async executeBulkArchive() {
+        const confirmBtn = document.getElementById('bulk-archive-confirm-btn');
+        const errorDiv = document.getElementById('bulk-archive-error');
+        const progressDiv = document.getElementById('bulk-archive-progress');
+        const progressBar = progressDiv.querySelector('.progress-bar');
+        const progressText = document.getElementById('bulk-archive-progress-text');
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        confirmBtn.disabled = true;
+
+        const leadIds = Array.from(this.selectedLeadIds);
+        const total = leadIds.length;
+
+        console.log(`Starting bulk archive for ${total} leads`);
+
+        try {
+            // Call batch soft delete endpoint
+            // Backend expects: [1, 2, 3] (plain array, not object)
+            // FastAPI parameter: leads_ids: list[int] = Body(...)
+            const response = await API.delete(Config.ENDPOINTS.LEAD.BATCH_SOFT_DELETE, leadIds);
+
+            console.log('Bulk archive response:', response);
+
+            // Update progress to 100%
+            progressBar.style.width = '100%';
+            progressText.textContent = `${total}/${total}`;
+
+            // Success - close modal and refresh
+            setTimeout(() => {
+                progressDiv.style.display = 'none';
+                confirmBtn.disabled = false;
+
+                const modal = bootstrap.Modal.getInstance(document.getElementById('bulkArchiveModal'));
+                modal.hide();
+
+                // Clear selection
+                this.clearSelection();
+
+                // Reload leads (archived leads won't show in main list)
+                this.loadLeads();
+
+                // Show success message
+                this.showToast('Success', `Successfully archived ${total} lead(s)`, 'success');
+            }, 500);
+
+        } catch (error) {
+            console.error('Failed to archive leads:', error);
+
+            progressDiv.style.display = 'none';
+            confirmBtn.disabled = false;
+
+            errorDiv.textContent = `Failed to archive leads: ${error.message || 'Unknown error'}`;
+            errorDiv.style.display = 'block';
+        }
+    },
+
+    /**
+     * ============================================================================
+     * ARCHIVED LEADS & RESTORE
+     * ============================================================================
+     * TODO: Add role-based permission check - only SuperAdmin/Admin (roles 1,2)
+     * should be able to access archived leads view and restore functionality
+     */
+
+    /**
+     * Toggle between showing all leads (including archived) vs active only
+     */
+    async toggleArchivedView() {
+        const toggleCheckbox = document.getElementById('show-archived-toggle');
+
+        // Update filters based on checkbox state
+        this.filters.deleted = toggleCheckbox.checked;
+        this.showingArchived = toggleCheckbox.checked;
+
+        // Update bulk actions visibility
+        if (this.showingArchived) {
+            // Show archived actions, hide active actions
+            document.querySelectorAll('.active-only-action').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.archived-only-action').forEach(el => el.style.display = 'block');
+        } else {
+            // Show active actions, hide archived actions
+            document.querySelectorAll('.active-only-action').forEach(el => el.style.display = 'block');
+            document.querySelectorAll('.archived-only-action').forEach(el => el.style.display = 'none');
+        }
+
+        // Reload leads with updated filter
+        await this.loadLeads();
+
+        // Clear selection when switching views
+        this.clearSelection();
+    },
+
+    /**
+     * Load archived leads from API
+     * Endpoint: GET /api/v1/lead/archived
+     */
+    async loadArchivedLeads() {
+        try {
+            console.log('Loading archived leads...');
+
+            const response = await API.get(Config.ENDPOINTS.LEAD.ARCHIVED);
+            const archivedLeads = response.records || [];
+
+            console.log(`Loaded ${archivedLeads.length} archived leads`);
+
+            // Store in allLeads for table rendering
+            this.allLeads = archivedLeads;
+
+            // Reset to first page
+            this.currentPage = 1;
+
+            // Populate table with archived leads
+            if (archivedLeads.length === 0) {
+                this.showEmptyState('No archived leads found');
+            } else {
+                this.populateTable(archivedLeads);
+            }
+
+        } catch (error) {
+            console.error('Failed to load archived leads:', error);
+            this.showToast('Error', 'Failed to load archived leads', 'error');
+        }
+    },
+
+    /**
+     * Show restore confirmation modal for single lead
+     */
+    showRestoreConfirmation(leadId) {
+        console.log('=== SHOW RESTORE CONFIRMATION ===');
+        console.log('Lead ID:', leadId);
+
+        // Find lead in allLeads array
+        const lead = this.allLeads.find(l => l.id === leadId);
+        if (!lead) {
+            console.error('Lead not found:', leadId);
+            return;
+        }
+
+        // Store lead info for restoration
+        this.leadToRestore = {
+            id: leadId,
+            name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown Lead'
+        };
+
+        console.log('Lead to restore:', this.leadToRestore);
+
+        // Update modal content
+        document.getElementById('restore-lead-name').textContent = this.leadToRestore.name;
+        document.getElementById('restore-lead-error').style.display = 'none';
+
+        // Initialize and show modal
+        if (!this.restoreModal) {
+            this.restoreModal = new bootstrap.Modal(document.getElementById('restoreLeadModal'));
+        }
+        this.restoreModal.show();
+    },
+
+    /**
+     * Restore single lead
+     * Endpoint: POST /api/v1/lead/restore with [leadId]
+     */
+    async restoreLead() {
+        if (!this.leadToRestore) {
+            console.error('No lead selected for restoration');
+            return;
+        }
+
+        console.log('=== RESTORE LEAD STARTED ===');
+        console.log('Restoring lead:', this.leadToRestore);
+
+        const confirmBtn = document.getElementById('restore-confirm-btn');
+        const cancelBtn = document.getElementById('restore-cancel-btn');
+        const errorDiv = document.getElementById('restore-lead-error');
+
+        // Hide error message
+        errorDiv.style.display = 'none';
+
+        // Show loading state
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restoring...';
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+        }
+
+        try {
+            // Use restore endpoint with single lead ID
+            // Backend expects: [leadId] (plain array)
+            const response = await API.post(Config.ENDPOINTS.LEAD.BATCH_RESTORE, [this.leadToRestore.id]);
+            console.log('Lead restored successfully:', response);
+
+            // Close modal
+            this.restoreModal.hide();
+
+            // Show success toast
+            this.showSuccessToast(`Lead "${this.leadToRestore.name}" restored successfully`);
+
+            // Clear leadToRestore
+            this.leadToRestore = null;
+
+            // Reload leads to update counter and table
+            await this.loadLeads();
+
+            console.log('=== RESTORE LEAD COMPLETED ===');
+
+        } catch (error) {
+            console.error('Failed to restore lead:', error);
+
+            // Show error in modal
+            errorDiv.textContent = error.message || 'Failed to restore lead. Please try again.';
+            errorDiv.style.display = 'block';
+
+        } finally {
+            // Reset button states
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-undo me-1"></i>Restore';
+            }
+            if (cancelBtn) {
+                cancelBtn.disabled = false;
+            }
+        }
+    },
+
+    /**
+     * Show bulk restore confirmation modal
+     */
+    showBulkRestoreModal() {
+        const count = this.selectedLeadIds.size;
+        if (count === 0) {
+            alert('Please select at least one lead to restore');
+            return;
+        }
+
+        // Update count in modal
+        document.getElementById('bulk-restore-count').textContent = count;
+
+        // Reset modal state
+        document.getElementById('bulk-restore-error').style.display = 'none';
+        document.getElementById('bulk-restore-progress').style.display = 'none';
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('bulkRestoreModal'));
+        modal.show();
+    },
+
+    /**
+     * Execute bulk restore
+     * Endpoint: POST /api/v1/lead/restore with [leadId1, leadId2, ...]
+     */
+    async executeBulkRestore() {
+        const confirmBtn = document.getElementById('bulk-restore-confirm-btn');
+        const errorDiv = document.getElementById('bulk-restore-error');
+        const progressDiv = document.getElementById('bulk-restore-progress');
+        const progressBar = progressDiv.querySelector('.progress-bar');
+        const progressText = document.getElementById('bulk-restore-progress-text');
+
+        // Hide error, show progress
+        errorDiv.style.display = 'none';
+        progressDiv.style.display = 'block';
+        confirmBtn.disabled = true;
+
+        const leadIds = Array.from(this.selectedLeadIds);
+        const total = leadIds.length;
+
+        console.log(`Starting bulk restore for ${total} leads`);
+
+        try {
+            // Call batch restore endpoint
+            // Backend expects: [1, 2, 3] (plain array)
+            const response = await API.post(Config.ENDPOINTS.LEAD.BATCH_RESTORE, leadIds);
+
+            console.log('Bulk restore response:', response);
+
+            // Update progress to 100%
+            progressBar.style.width = '100%';
+            progressText.textContent = `${total}/${total}`;
+
+            // Success - close modal and refresh
+            setTimeout(() => {
+                progressDiv.style.display = 'none';
+                confirmBtn.disabled = false;
+
+                const modal = bootstrap.Modal.getInstance(document.getElementById('bulkRestoreModal'));
+                modal.hide();
+
+                // Clear selection
+                this.clearSelection();
+
+                // Reload archived leads (restored leads won't show)
+                this.loadArchivedLeads();
+
+                // Show success message
+                this.showToast('Success', `Successfully restored ${total} lead(s)`, 'success');
+            }, 500);
+
+        } catch (error) {
+            console.error('Failed to restore leads:', error);
+
+            progressDiv.style.display = 'none';
+            confirmBtn.disabled = false;
+
+            errorDiv.textContent = `Failed to restore leads: ${error.message || 'Unknown error'}`;
+            errorDiv.style.display = 'block';
+        }
+    },
+
+    /**
      * Setup event listeners for lead actions
      */
     setupEventListeners() {
@@ -3373,13 +4093,21 @@ const LeadsPage = {
                 }
             }
 
-            // Delete button
-            // TODO: Add role-based permission check - only SuperAdmin/Admin (roles 1,2) should see delete button
-            if (e.target.closest('.delete-lead-btn')) {
-                const button = e.target.closest('.delete-lead-btn');
+            // Archive button (replaces delete)
+            // Archives lead using soft delete - can be restored by admin
+            if (e.target.closest('.archive-lead-btn')) {
+                const button = e.target.closest('.archive-lead-btn');
                 const leadId = parseInt(button.getAttribute('data-lead-id'));
-                console.log('Delete lead clicked:', leadId);
-                this.showDeleteConfirmation(leadId);
+                console.log('Archive lead clicked:', leadId);
+                this.showArchiveConfirmation(leadId);
+            }
+
+            // Restore button (for archived leads)
+            if (e.target.closest('.restore-lead-btn')) {
+                const button = e.target.closest('.restore-lead-btn');
+                const leadId = parseInt(button.getAttribute('data-lead-id'));
+                console.log('Restore lead clicked:', leadId);
+                this.showRestoreConfirmation(leadId);
             }
         });
 
@@ -3804,6 +4532,20 @@ const LeadsPage = {
     },
 
     /**
+     * Setup checkbox change handlers for bulk actions
+     * Called after each table render to wire up checkbox selection
+     */
+    setupCheckboxHandlers() {
+        document.querySelectorAll('.lead-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const leadId = e.target.getAttribute('data-lead-id');
+                const isChecked = e.target.checked;
+                this.handleLeadCheckboxChange(leadId, isChecked);
+            });
+        });
+    },
+
+    /**
      * Setup contact action handlers (phone icons, email links)
      * Called after each table render to wire up click handlers for:
      * - Phone call icon → opens modal to Messages tab
@@ -3849,11 +4591,11 @@ const LeadsPage = {
     },
 
     /**
-     * Show delete confirmation modal for a lead
-     * @param {number} leadId - ID of lead to delete
+     * Show archive confirmation modal for a lead
+     * @param {number} leadId - ID of lead to archive
      */
-    showDeleteConfirmation(leadId) {
-        console.log('=== SHOW DELETE CONFIRMATION ===');
+    showArchiveConfirmation(leadId) {
+        console.log('=== SHOW ARCHIVE CONFIRMATION ===');
         console.log('Lead ID:', leadId);
 
         // Find lead in allLeads array
@@ -3863,13 +4605,13 @@ const LeadsPage = {
             return;
         }
 
-        // Store lead info for deletion
+        // Store lead info for archiving
         this.leadToDelete = {
             id: leadId,
             name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown Lead'
         };
 
-        console.log('Lead to delete:', this.leadToDelete);
+        console.log('Lead to archive:', this.leadToDelete);
 
         // Update modal content
         document.getElementById('delete-lead-name').textContent = this.leadToDelete.name;
@@ -3883,22 +4625,23 @@ const LeadsPage = {
     },
 
     /**
-     * Delete lead (hard delete)
-     * Called when user confirms deletion
+     * Archive lead (soft delete)
+     * Called when user confirms archiving
      *
-     * ENDPOINT: DELETE /api/v1/lead/{id}/hard-delete
-     * Backend automatically logs LEAD_DELETED event
+     * ENDPOINT: DELETE /api/v1/lead/soft-delete with {leads_ids: [id]}
+     * Sets deleted_at timestamp and is_active=false
+     * Can be restored by admin using POST /api/v1/lead/restore
      *
-     * TODO: Add role-based permission check - only SuperAdmin/Admin (roles 1,2) can delete
+     * TODO: Add 'View Archived Leads' and restore functionality in admin section
      */
     async deleteLead() {
         if (!this.leadToDelete) {
-            console.error('No lead selected for deletion');
+            console.error('No lead selected for archiving');
             return;
         }
 
-        console.log('=== DELETE LEAD STARTED ===');
-        console.log('Deleting lead:', this.leadToDelete);
+        console.log('=== ARCHIVE LEAD STARTED ===');
+        console.log('Archiving lead:', this.leadToDelete);
 
         const confirmBtn = document.getElementById('delete-confirm-btn');
         const cancelBtn = document.getElementById('delete-cancel-btn');
@@ -3910,45 +4653,38 @@ const LeadsPage = {
         // Show loading state
         if (confirmBtn) {
             confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Deleting...';
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Archiving...';
         }
         if (cancelBtn) {
             cancelBtn.disabled = true;
         }
 
         try {
-            const endpoint = `${Config.ENDPOINTS.LEAD.DELETE}${this.leadToDelete.id}/hard-delete`;
-            console.log('DELETE endpoint:', endpoint);
-
-            const response = await API.delete(endpoint);
-            console.log('Lead deleted successfully:', response);
+            // Use batch soft delete endpoint with single lead ID
+            // Backend expects: [leadId] (plain array, not object)
+            // FastAPI parameter: leads_ids: list[int] = Body(...)
+            const response = await API.delete(Config.ENDPOINTS.LEAD.BATCH_SOFT_DELETE, [this.leadToDelete.id]);
+            console.log('Lead archived successfully:', response);
 
             // Close modal
             this.deleteModal.hide();
 
-            // Remove lead from allLeads array
-            this.allLeads = this.allLeads.filter(l => l.id !== this.leadToDelete.id);
-
-            // Remove row from table (don't reload entire list)
-            const row = document.querySelector(`tr[data-lead-id="${this.leadToDelete.id}"]`);
-            if (row) {
-                row.remove();
-                console.log('Lead row removed from table');
-            }
-
             // Show success toast
-            this.showSuccessToast(`Lead "${this.leadToDelete.name}" deleted successfully`);
+            this.showSuccessToast(`Lead "${this.leadToDelete.name}" archived successfully`);
 
             // Clear leadToDelete
             this.leadToDelete = null;
 
-            console.log('=== DELETE LEAD COMPLETED ===');
+            // Reload leads to update counter and table
+            await this.loadLeads();
+
+            console.log('=== ARCHIVE LEAD COMPLETED ===');
 
         } catch (error) {
-            console.error('Failed to delete lead:', error);
+            console.error('Failed to archive lead:', error);
 
             // Show error in modal
-            errorDiv.textContent = error.message || 'Failed to delete lead. Please try again.';
+            errorDiv.textContent = error.message || 'Failed to archive lead. Please try again.';
             errorDiv.style.display = 'block';
 
             // Keep modal open for retry
@@ -3957,7 +4693,7 @@ const LeadsPage = {
             // Reset button states
             if (confirmBtn) {
                 confirmBtn.disabled = false;
-                confirmBtn.innerHTML = '<i class="fas fa-trash me-1"></i>Delete';
+                confirmBtn.innerHTML = '<i class="fas fa-archive me-1"></i>Archive';
             }
             if (cancelBtn) {
                 cancelBtn.disabled = false;
@@ -4104,4 +4840,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             LeadsPage.populateTable(LeadsPage.allLeads);
         });
     }
+
+    // Initialize bulk action dropdowns
+    LeadsPage.initializeBulkStatusDropdown();
+    LeadsPage.initializeBulkAssignDropdown();
 });
