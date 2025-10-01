@@ -234,10 +234,37 @@ h6 { font-size: var(--font-size-base); }
   letter-spacing: 0.5px;
 }
 
-.badge-new { background: var(--success-green); color: var(--white); }
-.badge-progress { background: var(--warning-orange); color: var(--white); }
-.badge-converted { background: var(--info-cyan); color: var(--white); }
-.badge-lost { background: var(--danger-red); color: var(--white); }
+/* Status Badge Colors - High Contrast for Better Visibility */
+.badge-new {
+  background: #10B981;
+  color: var(--white);
+  font-weight: 600;
+}
+.badge-progress {
+  background: #F59E0B;
+  color: var(--white);
+  font-weight: 600;
+}
+.badge-converted {
+  background: #3B82F6;
+  color: var(--white);
+  font-weight: 600;
+}
+.badge-lost {
+  background: #EF4444;
+  color: var(--white);
+  font-weight: 600;
+}
+.badge-qualified {
+  background: #8B5CF6;
+  color: var(--white);
+  font-weight: 600;
+}
+.badge-secondary {
+  background: #6B7280;
+  color: var(--white);
+  font-weight: 600;
+}
 
 /* Tables */
 .table {
@@ -553,6 +580,181 @@ h6 { font-size: var(--font-size-base); }
 .border-dashed:hover {
   border-color: var(--primary-blue) !important;
   background: var(--soft-blue);
+}
+
+/* Inline Status Editing */
+.inline-status-container {
+  min-width: 140px;
+}
+
+.status-view-mode {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+  transition: all 0.2s ease;
+}
+
+.status-view-mode:hover {
+  opacity: 0.8;
+}
+
+.status-view-mode:hover .fa-pencil-alt {
+  color: var(--primary-blue) !important;
+}
+
+.status-edit-mode {
+  transition: all 0.3s ease;
+}
+
+.inline-status-dropdown {
+  border: 1px solid #dee2e6;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background-color: var(--white);
+}
+
+.inline-status-dropdown:hover:not(:disabled) {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 0.15rem rgba(74, 144, 226, 0.15);
+}
+
+.inline-status-dropdown:disabled {
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+}
+
+.save-status-btn, .cancel-status-btn {
+  padding: 0.2rem 0.4rem;
+  min-width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.save-status-btn {
+  background: linear-gradient(135deg, #10B981, #34D399);
+  color: white;
+}
+
+.save-status-btn:hover {
+  background: linear-gradient(135deg, #059669, #10B981);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.cancel-status-btn {
+  background: linear-gradient(135deg, #6B7280, #9CA3AF);
+  color: white;
+}
+
+.cancel-status-btn:hover {
+  background: linear-gradient(135deg, #4B5563, #6B7280);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);
+}
+
+/* Inline Assigned-To Editing */
+.inline-assigned-container {
+  min-width: 140px;
+}
+
+.assigned-view-mode {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+  transition: all 0.2s ease;
+}
+
+.assigned-view-mode:hover {
+  opacity: 0.8;
+}
+
+.assigned-view-mode:hover .fa-pencil-alt {
+  color: var(--primary-blue) !important;
+}
+
+.assigned-edit-mode {
+  transition: all 0.3s ease;
+}
+
+.inline-assigned-dropdown {
+  border: 1px solid #dee2e6;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  background-color: var(--white);
+}
+
+.inline-assigned-dropdown:hover:not(:disabled) {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 0.15rem rgba(74, 144, 226, 0.15);
+}
+
+.inline-assigned-dropdown:disabled {
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+}
+
+.save-assigned-btn, .cancel-assigned-btn {
+  padding: 0.2rem 0.4rem;
+  min-width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.save-assigned-btn {
+  background: linear-gradient(135deg, #10B981, #34D399);
+  color: white;
+}
+
+.save-assigned-btn:hover {
+  background: linear-gradient(135deg, #059669, #10B981);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.cancel-assigned-btn {
+  background: linear-gradient(135deg, #6B7280, #9CA3AF);
+  color: white;
+}
+
+.cancel-assigned-btn:hover {
+  background: linear-gradient(135deg, #4B5563, #6B7280);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);
+}
+
+/* Contact Action Icons */
+.phone-call-icon,
+.phone-sms-icon {
+  transition: all 0.2s ease;
+}
+
+.phone-call-icon:hover {
+  transform: scale(1.2);
+  filter: brightness(1.2);
+}
+
+.phone-sms-icon:hover {
+  transform: scale(1.2);
+  filter: brightness(1.2);
+}
+
+.email-link:hover {
+  text-decoration: underline !important;
+  filter: brightness(0.8);
 }
 
 /* Utility Classes */

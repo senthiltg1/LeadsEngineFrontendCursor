@@ -59,9 +59,9 @@
                 </ul>
                 
                 <div class="dropdown">
-                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
-                        <img src="https://via.placeholder.com/32x32/4A90E2/FFFFFF?text=DR" class="rounded-circle me-2" width="32" height="32">
-                        Dr. Sarah Johnson
+                    <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" id="user-display">
+                        <i class="fas fa-user-circle me-2"></i>
+                        <span id="user-name">Loading...</span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="#"><i class="fas fa-user me-2"></i>Profile</a></li>
@@ -179,6 +179,21 @@
         <!-- Leads Table -->
         <div class="card">
             <div class="card-body p-0">
+                <!-- Records counter and pagination controls -->
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                    <div>
+                        <span class="text-muted" id="records-counter">Loading leads...</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="text-muted mb-0">Rows per page:</label>
+                        <select class="form-select form-select-sm" style="width: 80px;" id="records-per-page">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table class="table table-hover mb-0" id="leadsTable">
                         <thead>
@@ -205,20 +220,10 @@
             </div>
         </div>
 
-        <!-- Pagination -->
-        <nav aria-label="Leads pagination" class="mt-4">
-            <ul class="pagination justify-content-center">
-                <li class="page-item disabled">
-                    <a class="page-link" href="#" tabindex="-1">Previous</a>
-                </li>
-                <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                <li class="page-item"><a class="page-link" href="#">2</a></li>
-                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                <li class="page-item">
-                    <a class="page-link" href="#">Next</a>
-                </li>
-            </ul>
-        </nav>
+        <!-- Pagination: TODO - Implement server-side pagination with offset/limit -->
+        <div id="pagination-container" class="mt-4" style="display: none;">
+            <!-- Pagination will be added here when implementing server-side pagination -->
+        </div>
     </div>
 
     <!-- Lead Detail Modal -->
@@ -691,45 +696,11 @@
             $('#selectAll').on('change', function() {
                 $('tbody input[type="checkbox"]').prop('checked', this.checked);
             });
-            
-            // Lead detail modal functionality
-            $('button[data-bs-target="#leadDetailModal"]').on('click', function() {
-                const leadId = $(this).data('lead-id');
-                loadLeadDetails(leadId);
-            });
-            
-            function loadLeadDetails(leadId) {
-                // This would normally load data from an API
-                // For now, we'll just update the modal title
-                const leadData = {
-                    1: { name: 'Jennifer Martinez', status: 'New' },
-                    2: { name: 'Michael Chen', status: 'In Progress' },
-                    3: { name: 'Sarah Wilson', status: 'Converted' },
-                    4: { name: 'David Rodriguez', status: 'In Progress' },
-                    5: { name: 'Lisa Thompson', status: 'Converted' }
-                };
-                
-                const lead = leadData[leadId];
-                if (lead) {
-                    $('#leadDetailModalLabel span:first').text(lead.name);
-                    $('#leadDetailModalLabel .badge').text(lead.status);
-                }
-            }
-            
-            // Export functionality
+
+            // Export functionality (placeholder)
             $('#exportBtn').on('click', function() {
-                alert('Export functionality would be implemented here');
+                alert('Export functionality will be implemented here');
             });
-            
-            // Add hover effects to table rows
-            $('#leadsTable tbody tr').hover(
-                function() {
-                    $(this).addClass('table-active');
-                },
-                function() {
-                    $(this).removeClass('table-active');
-                }
-            );
         });
     </script>
 </body>

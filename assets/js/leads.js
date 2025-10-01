@@ -52,7 +52,12 @@ const LeadsPage = {
     currentPage: 1,
     pageSize: Config.DEFAULT_PAGE_SIZE || 50,
     allLeads: [],
+    displayedLeads: [],
     userMap: {},
+
+    // Sorting state
+    sortColumn: null,
+    sortDirection: 'asc', // 'asc' or 'desc'
 
     // Filter state
     filters: {
@@ -477,10 +482,292 @@ const LeadsPage = {
         const tbody = document.querySelector('#leadsTable tbody');
         if (!tbody) return;
 
-        leads.forEach(lead => {
+        // Clear existing rows first
+        tbody.innerHTML = '';
+
+        // Apply pagination
+        this.displayedLeads = this.applyPagination(leads);
+
+        // Append new rows
+        this.displayedLeads.forEach(lead => {
             const row = this.createLeadRow(lead);
             tbody.appendChild(row);
         });
+
+        // Populate inline status dropdowns
+        this.populateInlineStatusDropdowns();
+
+        // Populate inline assigned-to dropdowns
+        this.populateInlineAssignedDropdowns();
+
+        // Setup phone/email click handlers
+        this.setupContactActionHandlers();
+
+        // Update records counter
+        this.updateRecordsCounter(this.displayedLeads.length, leads.length);
+    },
+
+    /**
+     * Load statuses for inline editing (called once at initialization)
+     * This method is called during page load (before rendering leads table)
+     * to cache all available statuses for use in inline status dropdowns.
+     *
+     * Why: Prevents async issues where dropdowns would be empty on first click,
+     * causing them to default to the first option instead of current status.
+     */
+    async loadStatusesForInlineEdit() {
+        try {
+            // Fetch all available lead statuses from API
+            const response = await API.get(Config.ENDPOINTS.LEADSTATUS.LIST);
+
+            // Cache statuses at class level for synchronous access during table rendering
+            this.availableStatuses = response.records || [];
+
+            console.log('Loaded statuses for inline editing:', this.availableStatuses.length);
+        } catch (error) {
+            console.error('Failed to load statuses for inline editing:', error);
+            // Set empty array as fallback to prevent errors
+            this.availableStatuses = [];
+        }
+    },
+
+    /**
+     * Load users for inline assignment editing (called once at initialization)
+     * This method is called during page load (before rendering leads table)
+     * to cache all available users for use in inline assigned-to dropdowns.
+     *
+     * Why: Same reason as statuses - prevents async dropdown population issues
+     */
+    async loadUsersForInlineEdit() {
+        try {
+            // Fetch all users from API
+            const response = await API.get(Config.ENDPOINTS.USER.LIST);
+
+            // Cache users at class level for synchronous access during table rendering
+            this.availableUsers = response.records || [];
+
+            console.log('Loaded users for inline editing:', this.availableUsers.length);
+        } catch (error) {
+            console.error('Failed to load users for inline editing:', error);
+            // Set empty array as fallback to prevent errors
+            this.availableUsers = [];
+        }
+    },
+
+    /**
+     * Setup inline status editing functionality for all containers in the table
+     * This method is called after each table render (populateTable) to:
+     * 1. Populate dropdowns with all available statuses (from cached data)
+     * 2. Pre-select the current status for each lead
+     * 3. Wire up click handlers for view/edit mode switching
+     * 4. Wire up save/cancel button handlers
+     *
+     * The inline editing pattern:
+     * - View mode: Shows colored status badge with pencil icon
+     * - Click anywhere on badge: Switches to edit mode
+     * - Edit mode: Shows dropdown + save/cancel buttons
+     * - Save: Updates status via API, returns to view mode
+     * - Cancel: Reverts dropdown, returns to view mode
+     */
+    populateInlineStatusDropdowns() {
+        // Find all inline status containers in the current table
+        const containers = document.querySelectorAll('.inline-status-container');
+
+        containers.forEach(container => {
+            // Extract data attributes set during row creation
+            const currentStatusId = parseInt(container.getAttribute('data-current-status'));
+            const leadId = container.getAttribute('data-lead-id');
+
+            // Get DOM elements for view/edit modes
+            const viewMode = container.querySelector('.status-view-mode');
+            const editMode = container.querySelector('.status-edit-mode');
+            const dropdown = container.querySelector('.inline-status-dropdown');
+            const saveBtn = container.querySelector('.save-status-btn');
+            const cancelBtn = container.querySelector('.cancel-status-btn');
+
+            // === POPULATE DROPDOWN WITH ALL STATUSES ===
+            // Clear placeholder "Loading..." option
+            dropdown.innerHTML = '';
+
+            if (this.availableStatuses && this.availableStatuses.length > 0) {
+                // Populate with cached statuses (loaded at page init)
+                this.availableStatuses.forEach(status => {
+                    const option = document.createElement('option');
+                    option.value = status.id;
+                    option.textContent = status.name;
+
+                    // CRITICAL: Pre-select the current status
+                    // This ensures dropdown shows correct value on first click
+                    if (status.id === currentStatusId) {
+                        option.selected = true;
+                    }
+
+                    dropdown.appendChild(option);
+                });
+            } else {
+                // Fallback if statuses haven't loaded yet (shouldn't happen)
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Loading...';
+                dropdown.appendChild(option);
+            }
+
+            // === CLICK HANDLER: VIEW MODE → EDIT MODE ===
+            // Clicking badge or pencil icon switches to edit mode
+            viewMode.addEventListener('click', () => {
+                viewMode.style.display = 'none';
+                editMode.style.display = 'block';
+                dropdown.focus(); // Auto-focus dropdown for better UX
+            });
+
+            // === SAVE BUTTON: UPDATE STATUS ===
+            saveBtn.addEventListener('click', () => {
+                const newStatusId = parseInt(dropdown.value);
+
+                if (newStatusId !== currentStatusId) {
+                    // Status changed: call API to update
+                    this.handleInlineStatusChange(leadId, currentStatusId, newStatusId, container);
+                } else {
+                    // No change: just exit edit mode without API call
+                    viewMode.style.display = 'block';
+                    editMode.style.display = 'none';
+                }
+            });
+
+            // === CANCEL BUTTON: REVERT AND EXIT ===
+            cancelBtn.addEventListener('click', () => {
+                // Revert dropdown to original value
+                dropdown.value = currentStatusId;
+
+                // Return to view mode without saving
+                viewMode.style.display = 'block';
+                editMode.style.display = 'none';
+            });
+        });
+    },
+
+    /**
+     * Setup inline assigned-to editing functionality for all containers in the table
+     * This method is called after each table render (populateTable) to:
+     * 1. Populate dropdowns with all available users (from cached data)
+     * 2. Pre-select the current assigned user for each lead
+     * 3. Wire up click handlers for view/edit mode switching
+     * 4. Wire up save/cancel button handlers
+     *
+     * Same pattern as status inline editing - see populateInlineStatusDropdowns for detailed comments
+     */
+    populateInlineAssignedDropdowns() {
+        // Find all inline assigned-to containers in the current table
+        const containers = document.querySelectorAll('.inline-assigned-container');
+
+        containers.forEach(container => {
+            // Extract data attributes set during row creation
+            const currentUserId = parseInt(container.getAttribute('data-current-user')) || null;
+            const leadId = container.getAttribute('data-lead-id');
+
+            // Get DOM elements for view/edit modes
+            const viewMode = container.querySelector('.assigned-view-mode');
+            const editMode = container.querySelector('.assigned-edit-mode');
+            const dropdown = container.querySelector('.inline-assigned-dropdown');
+            const saveBtn = container.querySelector('.save-assigned-btn');
+            const cancelBtn = container.querySelector('.cancel-assigned-btn');
+
+            // === POPULATE DROPDOWN WITH ALL USERS ===
+            dropdown.innerHTML = '';
+
+            // Add "Unassigned" option
+            const unassignedOption = document.createElement('option');
+            unassignedOption.value = '';
+            unassignedOption.textContent = 'Unassigned';
+            if (!currentUserId) {
+                unassignedOption.selected = true;
+            }
+            dropdown.appendChild(unassignedOption);
+
+            if (this.availableUsers && this.availableUsers.length > 0) {
+                // Populate with cached users (loaded at page init)
+                this.availableUsers.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    // Display user's full name or fallback to username/email
+                    option.textContent = user.full_name || user.username || user.email || `User ${user.id}`;
+
+                    // CRITICAL: Pre-select the current assigned user
+                    if (user.id === currentUserId) {
+                        option.selected = true;
+                    }
+
+                    dropdown.appendChild(option);
+                });
+            }
+
+            // === CLICK HANDLER: VIEW MODE → EDIT MODE ===
+            viewMode.addEventListener('click', () => {
+                viewMode.style.display = 'none';
+                editMode.style.display = 'block';
+                dropdown.focus();
+            });
+
+            // === SAVE BUTTON: UPDATE ASSIGNED USER ===
+            saveBtn.addEventListener('click', () => {
+                const newUserId = dropdown.value ? parseInt(dropdown.value) : null;
+
+                if (newUserId !== currentUserId) {
+                    // Assignment changed: call API to update
+                    this.handleInlineAssignedChange(leadId, currentUserId, newUserId, container);
+                } else {
+                    // No change: just exit edit mode without API call
+                    viewMode.style.display = 'block';
+                    editMode.style.display = 'none';
+                }
+            });
+
+            // === CANCEL BUTTON: REVERT AND EXIT ===
+            cancelBtn.addEventListener('click', () => {
+                // Revert dropdown to original value
+                dropdown.value = currentUserId || '';
+
+                // Return to view mode without saving
+                viewMode.style.display = 'block';
+                editMode.style.display = 'none';
+            });
+        });
+    },
+
+    /**
+     * Apply pagination to leads array
+     * @param {Array} leads - Full array of leads
+     * @returns {Array} Paginated leads
+     */
+    applyPagination(leads) {
+        const pageSize = this.pageSize;
+
+        // If pageSize is 'all' or larger than total, return all leads
+        if (pageSize === 'all' || pageSize >= leads.length) {
+            return leads;
+        }
+
+        // Return first pageSize leads (client-side pagination)
+        return leads.slice(0, pageSize);
+    },
+
+    /**
+     * Update records counter display
+     * @param {number} displayed - Number of displayed records
+     * @param {number} total - Total number of records
+     */
+    updateRecordsCounter(displayed, total) {
+        const counterElement = document.getElementById('records-counter');
+        if (counterElement) {
+            if (total === 0) {
+                counterElement.textContent = 'No leads found';
+            } else if (displayed === total) {
+                counterElement.textContent = `Showing 1-${total} of ${total} leads`;
+            } else {
+                // Show range: 1-50 of 127
+                counterElement.textContent = `Showing 1-${displayed} of ${total} leads`;
+            }
+        }
     },
 
     /**
@@ -494,13 +781,17 @@ const LeadsPage = {
 
         // Get lead data with fallbacks
         const name = this.getLeadName(lead);
-        const initials = this.getInitials(name);
         const email = lead.email || lead.primary_email || 'N/A';
         const phone = lead.phone || lead.primary_phone || 'N/A';
-        const status = this.getStatus(lead);
+        const status = this.getStatus(lead); // Returns {name, slug} object
+        // CRITICAL: Get the actual status ID (not from getStatus which returns {name,slug})
+        // Check lead.status.id first (nested), then lead.status_id (flat)
+        const statusId = lead.status?.id || lead.status_id || '';
         const source = this.getSource(lead);
         const score = lead.score !== null && lead.score !== undefined ? lead.score : 0;
         const assignedTo = this.getAssignedUser(lead);
+        // Get assigned user ID for inline editing
+        const assignedUserId = lead.assigned_user?.id || lead.assigned_to?.id || lead.assigned_to_user_id || '';
         const leadId = lead.id || 'N/A';
 
         // Build row HTML
@@ -510,17 +801,52 @@ const LeadsPage = {
                 <span class="badge bg-secondary">#${leadId}</span>
             </td>
             <td>
-                <div class="d-flex align-items-center">
-                    <img src="https://via.placeholder.com/40x40/4A90E2/FFFFFF?text=${encodeURIComponent(initials)}"
-                         class="rounded-circle me-3" width="40" height="40" alt="${name}">
-                    <div>
-                        <div class="fw-semibold">${this.escapeHtml(name)}</div>
+                <div class="fw-semibold">${this.escapeHtml(name)}</div>
+            </td>
+            <td>
+                <!-- Email: Clickable to open modal on Email tab -->
+                <span class="email-link" data-lead-id="${lead.id || ''}" style="cursor: pointer; color: var(--primary-blue);" title="Open email">
+                    ${this.escapeHtml(email)}
+                </span>
+            </td>
+            <td>
+                <!-- Phone: Clickable tel: link + action icons -->
+                <div class="d-flex align-items-center gap-1">
+                    <a href="tel:${this.escapeHtml(phone)}" class="text-decoration-none text-dark">${this.escapeHtml(phone)}</a>
+                    ${phone !== 'N/A' ? `
+                        <i class="fas fa-phone phone-call-icon" data-lead-id="${lead.id || ''}"
+                           style="font-size: 14px; cursor: pointer; color: var(--success-green);"
+                           title="Log call"></i>
+                        <i class="fas fa-comment-dots phone-sms-icon" data-lead-id="${lead.id || ''}"
+                           style="font-size: 14px; cursor: pointer; color: var(--info-cyan);"
+                           title="Send SMS"></i>
+                    ` : ''}
+                </div>
+            </td>
+            <td>
+                <!-- Inline status editing container: stores lead ID and current status ID -->
+                <div class="inline-status-container" data-lead-id="${lead.id || ''}" data-current-status="${statusId}">
+                    <!-- View Mode: Badge with pencil icon (default visible) -->
+                    <div class="status-view-mode">
+                        ${this.createStatusBadge(status)}
+                        <i class="fas fa-pencil-alt ms-1 text-muted" style="font-size: 0.7rem; cursor: pointer;"></i>
+                    </div>
+                    <!-- Edit Mode: Dropdown + Save/Cancel buttons (hidden by default) -->
+                    <div class="status-edit-mode" style="display: none;">
+                        <div class="d-flex align-items-center gap-1">
+                            <select class="form-select form-select-sm inline-status-dropdown" style="width: auto; min-width: 130px; font-size: 0.8rem;">
+                                <option value="">Loading...</option>
+                            </select>
+                            <button class="btn btn-success save-status-btn" title="Save">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-secondary cancel-status-btn" title="Cancel">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </td>
-            <td>${this.escapeHtml(email)}</td>
-            <td>${this.escapeHtml(phone)}</td>
-            <td>${this.createStatusBadge(status)}</td>
             <td>${this.escapeHtml(source)}</td>
             <td>
                 <div class="d-flex align-items-center">
@@ -530,7 +856,30 @@ const LeadsPage = {
                     <span class="fw-semibold">${score}</span>
                 </div>
             </td>
-            <td>${this.escapeHtml(assignedTo)}</td>
+            <td>
+                <!-- Inline assigned-to editing container: stores lead ID and current user ID -->
+                <div class="inline-assigned-container" data-lead-id="${lead.id || ''}" data-current-user="${assignedUserId}">
+                    <!-- View Mode: User name with pencil icon (default visible) -->
+                    <div class="assigned-view-mode">
+                        <span class="assigned-user-name">${this.escapeHtml(assignedTo)}</span>
+                        <i class="fas fa-pencil-alt ms-1 text-muted" style="font-size: 0.7rem; cursor: pointer;"></i>
+                    </div>
+                    <!-- Edit Mode: Dropdown + Save/Cancel buttons (hidden by default) -->
+                    <div class="assigned-edit-mode" style="display: none;">
+                        <div class="d-flex align-items-center gap-1">
+                            <select class="form-select form-select-sm inline-assigned-dropdown" style="width: auto; min-width: 140px; font-size: 0.8rem;">
+                                <option value="">Loading...</option>
+                            </select>
+                            <button class="btn btn-success save-assigned-btn" title="Save">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-secondary cancel-assigned-btn" title="Cancel">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </td>
             <td>
                 <div class="btn-group" role="group">
                     <button class="btn btn-sm btn-outline-primary view-lead-btn"
@@ -586,9 +935,12 @@ const LeadsPage = {
     },
 
     /**
-     * Get status information
+     * Get status information for display purposes
+     * NOTE: This returns {name, slug} for DISPLAY only - it does NOT include the status ID
+     * For the actual status ID, use lead.status.id or lead.status_id directly
+     *
      * @param {Object} lead - Lead object
-     * @returns {Object} Status object {name, slug}
+     * @returns {Object} Status object {name, slug} - NO ID field
      */
     getStatus(lead) {
         if (lead.status) {
@@ -665,7 +1017,7 @@ const LeadsPage = {
     },
 
     /**
-     * Create status badge HTML
+     * Create status badge HTML with improved color mapping
      * @param {Object} status - Status object
      * @returns {String} Badge HTML
      */
@@ -674,16 +1026,30 @@ const LeadsPage = {
         let badgeClass = 'badge-secondary';
 
         // Determine badge color based on status
-        if (statusName.includes('new')) {
+        // New leads (green)
+        if (statusName.includes('new') || statusName.includes('inquiry')) {
             badgeClass = 'badge-new';
-        } else if (statusName.includes('progress') || statusName.includes('contact') || statusName.includes('follow')) {
+        }
+        // In progress / active / contacted (orange)
+        else if (statusName.includes('progress') || statusName.includes('contact') ||
+                 statusName.includes('follow') || statusName.includes('consult') ||
+                 statusName.includes('booked') || statusName.includes('scheduled')) {
             badgeClass = 'badge-progress';
-        } else if (statusName.includes('convert') || statusName.includes('won') || statusName.includes('customer')) {
-            badgeClass = 'badge-converted';
-        } else if (statusName.includes('lost') || statusName.includes('closed')) {
-            badgeClass = 'badge-lost';
-        } else if (statusName.includes('qualified')) {
+        }
+        // Qualified / accepted (purple)
+        else if (statusName.includes('qualified') || statusName.includes('accepted')) {
             badgeClass = 'badge-qualified';
+        }
+        // Converted / won / customer (blue)
+        else if (statusName.includes('convert') || statusName.includes('won') ||
+                 statusName.includes('customer') || statusName.includes('success')) {
+            badgeClass = 'badge-converted';
+        }
+        // Lost / rejected / closed (red)
+        else if (statusName.includes('lost') || statusName.includes('closed') ||
+                 statusName.includes('reject') || statusName.includes('cancel') ||
+                 statusName.includes('dead')) {
+            badgeClass = 'badge-lost';
         }
 
         return `<span class="badge ${badgeClass}">${this.escapeHtml(status.name)}</span>`;
@@ -827,8 +1193,9 @@ const LeadsPage = {
     /**
      * Show lead detail modal
      * @param {String|Number} leadId - Lead ID
+     * @param {String} activeTab - Tab to activate (overview, edit, notes, timeline)
      */
-    async showLeadModal(leadId) {
+    async showLeadModal(leadId, activeTab = 'overview') {
         if (!leadId) {
             console.error('No lead ID provided');
             return;
@@ -845,6 +1212,13 @@ const LeadsPage = {
             // Show modal
             const modal = new bootstrap.Modal(modalElement);
             modal.show();
+
+            // Activate requested tab
+            const tabToActivate = document.querySelector(`#${activeTab}-tab`);
+            if (tabToActivate) {
+                const tab = new bootstrap.Tab(tabToActivate);
+                tab.show();
+            }
 
             // Show loading state in modal
             this.showModalLoadingState();
@@ -2394,12 +2768,13 @@ const LeadsPage = {
                 }
             }
 
-            // Edit button (placeholder)
+            // Edit button - opens modal on Edit tab
             if (e.target.closest('.edit-lead-btn')) {
                 const button = e.target.closest('.edit-lead-btn');
                 const leadId = button.getAttribute('data-lead-id');
-                console.log('Edit lead:', leadId);
-                // TODO: Implement edit functionality
+                if (leadId) {
+                    this.showLeadModal(leadId, 'edit');
+                }
             }
 
             // Delete button
@@ -2410,6 +2785,470 @@ const LeadsPage = {
                 console.log('Delete lead clicked:', leadId);
                 this.showDeleteConfirmation(leadId);
             }
+        });
+
+        // Table header sorting
+        document.querySelectorAll('#leadsTable thead th').forEach((th, index) => {
+            // Skip checkbox and actions columns
+            if (index === 0 || index === 9) return;
+
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const columnMap = {
+                    1: 'id',
+                    2: 'name',
+                    3: 'email',
+                    4: 'phone',
+                    5: 'status',
+                    6: 'source',
+                    7: 'score',
+                    8: 'assigned_to'
+                };
+
+                const column = columnMap[index];
+                if (column) {
+                    this.sortTable(column);
+                }
+            });
+        });
+    },
+
+    /**
+     * Sort table by column
+     * @param {string} column - Column name to sort by
+     */
+    sortTable(column) {
+        // Toggle direction if same column, otherwise default to asc
+        if (this.sortColumn === column) {
+            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortColumn = column;
+            this.sortDirection = 'asc';
+        }
+
+        console.log(`Sorting by ${column} ${this.sortDirection}`);
+
+        // Sort allLeads array
+        this.allLeads.sort((a, b) => {
+            let aVal, bVal;
+
+            switch (column) {
+                case 'id':
+                    aVal = a.id || 0;
+                    bVal = b.id || 0;
+                    break;
+                case 'name':
+                    aVal = this.getLeadName(a).toLowerCase();
+                    bVal = this.getLeadName(b).toLowerCase();
+                    break;
+                case 'email':
+                    aVal = (a.email || '').toLowerCase();
+                    bVal = (b.email || '').toLowerCase();
+                    break;
+                case 'phone':
+                    aVal = (a.phone || '').toLowerCase();
+                    bVal = (b.phone || '').toLowerCase();
+                    break;
+                case 'status':
+                    // getStatus returns an object {name, slug}, we need the name property
+                    aVal = (this.getStatus(a).name || '').toLowerCase();
+                    bVal = (this.getStatus(b).name || '').toLowerCase();
+                    break;
+                case 'source':
+                    aVal = this.getSource(a).toLowerCase();
+                    bVal = this.getSource(b).toLowerCase();
+                    break;
+                case 'score':
+                    aVal = a.score || 0;
+                    bVal = b.score || 0;
+                    break;
+                case 'assigned_to':
+                    aVal = this.getAssignedUser(a).toLowerCase();
+                    bVal = this.getAssignedUser(b).toLowerCase();
+                    break;
+                default:
+                    return 0;
+            }
+
+            // Compare values
+            if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+            if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Re-render table
+        this.populateTable(this.allLeads);
+
+        // Update sort indicators
+        this.updateSortIndicators();
+    },
+
+    /**
+     * Update sort indicators in table headers
+     */
+    updateSortIndicators() {
+        // Remove all existing sort indicators
+        document.querySelectorAll('#leadsTable thead th i.fa-sort, #leadsTable thead th i.fa-sort-up, #leadsTable thead th i.fa-sort-down').forEach(icon => {
+            icon.className = 'fas fa-sort ms-1';
+        });
+
+        // Add indicator to active column
+        if (this.sortColumn) {
+            const columnMap = {
+                'id': 1,
+                'name': 2,
+                'email': 3,
+                'phone': 4,
+                'status': 5,
+                'source': 6,
+                'score': 7,
+                'assigned_to': 8
+            };
+
+            const columnIndex = columnMap[this.sortColumn];
+            if (columnIndex) {
+                const th = document.querySelector(`#leadsTable thead th:nth-child(${columnIndex + 1})`);
+                if (th) {
+                    const icon = th.querySelector('i.fa-sort');
+                    if (icon) {
+                        icon.className = `fas fa-sort-${this.sortDirection === 'asc' ? 'up' : 'down'} ms-1`;
+                    }
+                }
+            }
+        }
+    },
+
+    /**
+     * Handle inline status change from table
+     * Called when user clicks Save button after selecting a new status
+     *
+     * Process:
+     * 1. Show loading state (disable controls, reduce opacity)
+     * 2. Fetch full lead data (CRITICAL: PUT endpoint requires ALL fields)
+     * 3. Update only status_id field, keeping all other data intact
+     * 4. Send complete lead object to PUT endpoint
+     * 5. Update local data (allLeads array) with new status
+     * 6. Update badge in view mode with new status color/text
+     * 7. Show success feedback (green row flash) and return to view mode
+     * 8. On error: Show red flash, revert dropdown, show alert
+     *
+     * @param {string|number} leadId - Lead ID
+     * @param {number} oldStatusId - Previous status ID (for revert on error)
+     * @param {number} newStatusId - New status ID selected by user
+     * @param {HTMLElement} container - Status container element
+     */
+    async handleInlineStatusChange(leadId, oldStatusId, newStatusId, container) {
+        // Validation: ensure we have required data
+        if (!leadId || !newStatusId || oldStatusId === newStatusId) {
+            return;
+        }
+
+        console.log('=== INLINE STATUS CHANGE ===');
+        console.log('Lead ID:', leadId);
+        console.log('Old Status:', oldStatusId);
+        console.log('New Status:', newStatusId);
+
+        // Get DOM elements from container
+        const viewMode = container.querySelector('.status-view-mode');
+        const editMode = container.querySelector('.status-edit-mode');
+        const dropdown = container.querySelector('.inline-status-dropdown');
+        const saveBtn = container.querySelector('.save-status-btn');
+        const cancelBtn = container.querySelector('.cancel-status-btn');
+
+        // Find the table row for visual feedback
+        const row = container.closest('tr');
+        if (!row) {
+            console.error('Could not find table row');
+            return;
+        }
+
+        try {
+            // === SHOW LOADING STATE ===
+            // Disable all controls to prevent double-clicks
+            dropdown.disabled = true;
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            // Reduce opacity to indicate loading
+            editMode.style.opacity = '0.6';
+            row.style.opacity = '0.7';
+
+            // === FETCH CURRENT LEAD DATA ===
+            // CRITICAL: The PUT /lead/{id} endpoint requires ALL lead fields
+            // We can't just send {status_id: X}, we must send the complete lead object
+            console.log('Fetching current lead data...');
+            const leadResponse = await API.get(`${Config.ENDPOINTS.LEAD.READ}${leadId}`);
+            const currentLead = leadResponse.records && leadResponse.records[0] ? leadResponse.records[0] : leadResponse;
+
+            if (!currentLead) {
+                throw new Error('Lead not found');
+            }
+
+            console.log('Current lead data:', currentLead);
+
+            // === UPDATE ONLY STATUS_ID ===
+            // Spread all existing fields, then override only status_id
+            const updatedLead = {
+                ...currentLead,
+                status_id: newStatusId
+            };
+
+            console.log('Sending updated lead:', updatedLead);
+
+            // === CALL API TO UPDATE LEAD ===
+            const response = await API.put(`${Config.ENDPOINTS.LEAD.UPDATE}${leadId}`, updatedLead);
+            console.log('Status updated successfully:', response);
+
+            // === UPDATE LOCAL DATA ===
+            // Get the new status object from cached statuses
+            const newStatus = this.availableStatuses.find(s => s.id === newStatusId) || { id: newStatusId, name: 'Unknown' };
+
+            // Update the lead in allLeads array (for consistency)
+            const leadIndex = this.allLeads.findIndex(l => l.id == leadId);
+            if (leadIndex !== -1) {
+                this.allLeads[leadIndex] = {
+                    ...this.allLeads[leadIndex],
+                    status_id: newStatusId,
+                    status: newStatus
+                };
+            }
+
+            // === UPDATE VIEW MODE BADGE ===
+            // Replace badge classes and text with new status
+            const statusBadge = viewMode.querySelector('.badge');
+            if (statusBadge) {
+                const newBadgeHTML = this.createStatusBadge(newStatus);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newBadgeHTML;
+                const newBadge = tempDiv.querySelector('.badge');
+                if (newBadge) {
+                    // Update badge class (for color) and text
+                    statusBadge.className = newBadge.className;
+                    statusBadge.textContent = newBadge.textContent;
+                }
+            }
+
+            // Update data attribute for future edits
+            container.setAttribute('data-current-status', newStatusId);
+
+            // === SHOW SUCCESS FEEDBACK ===
+            // Flash row background green to indicate success
+            row.style.transition = 'background-color 0.3s';
+            row.style.backgroundColor = '#d4edda'; // Light green
+            setTimeout(() => {
+                row.style.backgroundColor = '';
+            }, 1000);
+
+            // Exit edit mode and return to view mode
+            editMode.style.display = 'none';
+            viewMode.style.display = 'block';
+
+            console.log('Status change completed successfully');
+
+        } catch (error) {
+            console.error('Failed to update status:', error);
+
+            // === REVERT ON ERROR ===
+            // Revert dropdown to original status
+            dropdown.value = oldStatusId;
+
+            // === SHOW ERROR FEEDBACK ===
+            // Flash row background red to indicate error
+            row.style.transition = 'background-color 0.3s';
+            row.style.backgroundColor = '#f8d7da'; // Light red
+            setTimeout(() => {
+                row.style.backgroundColor = '';
+            }, 2000);
+
+            // Show error message to user
+            alert(`Failed to update status: ${error.message || 'Unknown error'}`);
+
+        } finally {
+            // === RESTORE UI STATE ===
+            // Re-enable all controls
+            dropdown.disabled = false;
+            saveBtn.disabled = false;
+            cancelBtn.disabled = false;
+            // Restore full opacity
+            editMode.style.opacity = '1';
+            row.style.opacity = '1';
+        }
+    },
+
+    /**
+     * Handle inline assigned-to change from table
+     * Called when user clicks Save button after selecting a new assigned user
+     *
+     * Process: Same as handleInlineStatusChange but for assigned_to_user_id field
+     *
+     * @param {string|number} leadId - Lead ID
+     * @param {number|null} oldUserId - Previous assigned user ID (null if unassigned)
+     * @param {number|null} newUserId - New assigned user ID (null if unassigning)
+     * @param {HTMLElement} container - Assigned container element
+     */
+    async handleInlineAssignedChange(leadId, oldUserId, newUserId, container) {
+        // Validation: ensure we have required data
+        if (!leadId || oldUserId === newUserId) {
+            return;
+        }
+
+        console.log('=== INLINE ASSIGNED CHANGE ===');
+        console.log('Lead ID:', leadId);
+        console.log('Old User:', oldUserId);
+        console.log('New User:', newUserId);
+
+        // Get DOM elements from container
+        const viewMode = container.querySelector('.assigned-view-mode');
+        const editMode = container.querySelector('.assigned-edit-mode');
+        const dropdown = container.querySelector('.inline-assigned-dropdown');
+        const saveBtn = container.querySelector('.save-assigned-btn');
+        const cancelBtn = container.querySelector('.cancel-assigned-btn');
+        const userNameSpan = viewMode.querySelector('.assigned-user-name');
+
+        // Find the table row for visual feedback
+        const row = container.closest('tr');
+        if (!row) {
+            console.error('Could not find table row');
+            return;
+        }
+
+        try {
+            // === SHOW LOADING STATE ===
+            dropdown.disabled = true;
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            editMode.style.opacity = '0.6';
+            row.style.opacity = '0.7';
+
+            // === FETCH CURRENT LEAD DATA ===
+            // CRITICAL: The PUT /lead/{id} endpoint requires ALL lead fields
+            console.log('Fetching current lead data...');
+            const leadResponse = await API.get(`${Config.ENDPOINTS.LEAD.READ}${leadId}`);
+            const currentLead = leadResponse.records && leadResponse.records[0] ? leadResponse.records[0] : leadResponse;
+
+            if (!currentLead) {
+                throw new Error('Lead not found');
+            }
+
+            console.log('Current lead data:', currentLead);
+
+            // === UPDATE ONLY ASSIGNED_TO_USER_ID ===
+            const updatedLead = {
+                ...currentLead,
+                assigned_to_user_id: newUserId
+            };
+
+            console.log('Sending updated lead:', updatedLead);
+
+            // === CALL API TO UPDATE LEAD ===
+            const response = await API.put(`${Config.ENDPOINTS.LEAD.UPDATE}${leadId}`, updatedLead);
+            console.log('Assignment updated successfully:', response);
+
+            // === UPDATE LOCAL DATA ===
+            // Get the new user object from cached users
+            let newUserName = 'Unassigned';
+            if (newUserId) {
+                const newUser = this.availableUsers.find(u => u.id === newUserId);
+                if (newUser) {
+                    newUserName = newUser.full_name || newUser.username || newUser.email || `User ${newUser.id}`;
+                }
+            }
+
+            // Update the lead in allLeads array
+            const leadIndex = this.allLeads.findIndex(l => l.id == leadId);
+            if (leadIndex !== -1) {
+                this.allLeads[leadIndex] = {
+                    ...this.allLeads[leadIndex],
+                    assigned_to_user_id: newUserId,
+                    assigned_user: newUserId ? { id: newUserId } : null
+                };
+            }
+
+            // === UPDATE VIEW MODE NAME ===
+            userNameSpan.textContent = newUserName;
+
+            // Update data attribute for future edits
+            container.setAttribute('data-current-user', newUserId || '');
+
+            // === SHOW SUCCESS FEEDBACK ===
+            row.style.transition = 'background-color 0.3s';
+            row.style.backgroundColor = '#d4edda'; // Light green
+            setTimeout(() => {
+                row.style.backgroundColor = '';
+            }, 1000);
+
+            // Exit edit mode and return to view mode
+            editMode.style.display = 'none';
+            viewMode.style.display = 'block';
+
+            console.log('Assignment change completed successfully');
+
+        } catch (error) {
+            console.error('Failed to update assignment:', error);
+
+            // === REVERT ON ERROR ===
+            dropdown.value = oldUserId || '';
+
+            // === SHOW ERROR FEEDBACK ===
+            row.style.transition = 'background-color 0.3s';
+            row.style.backgroundColor = '#f8d7da'; // Light red
+            setTimeout(() => {
+                row.style.backgroundColor = '';
+            }, 2000);
+
+            alert(`Failed to update assignment: ${error.message || 'Unknown error'}`);
+
+        } finally {
+            // === RESTORE UI STATE ===
+            dropdown.disabled = false;
+            saveBtn.disabled = false;
+            cancelBtn.disabled = false;
+            editMode.style.opacity = '1';
+            row.style.opacity = '1';
+        }
+    },
+
+    /**
+     * Setup contact action handlers (phone icons, email links)
+     * Called after each table render to wire up click handlers for:
+     * - Phone call icon → opens modal to Messages tab
+     * - SMS icon → opens modal to Messages tab
+     * - Email link → opens modal to Email tab
+     */
+    setupContactActionHandlers() {
+        // === PHONE CALL ICONS ===
+        document.querySelectorAll('.phone-call-icon').forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const leadId = icon.getAttribute('data-lead-id');
+                if (leadId) {
+                    console.log('Opening modal for call logging, Lead ID:', leadId);
+                    this.showLeadModal(leadId, 'messages'); // Open to Messages tab
+                }
+            });
+        });
+
+        // === SMS ICONS ===
+        document.querySelectorAll('.phone-sms-icon').forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const leadId = icon.getAttribute('data-lead-id');
+                if (leadId) {
+                    console.log('Opening modal for SMS, Lead ID:', leadId);
+                    this.showLeadModal(leadId, 'messages'); // Open to Messages tab
+                }
+            });
+        });
+
+        // === EMAIL LINKS ===
+        document.querySelectorAll('.email-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const leadId = link.getAttribute('data-lead-id');
+                if (leadId) {
+                    console.log('Opening modal for email, Lead ID:', leadId);
+                    this.showLeadModal(leadId, 'email'); // Open to Email tab
+                }
+            });
         });
     },
 
@@ -2575,11 +3414,43 @@ const LeadsPage = {
 
 // Initialize leads when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
+    // Display logged-in user name
+    const userNameElement = document.getElementById('user-name');
+    if (userNameElement) {
+        // Try stored user first
+        let user = Auth.getUser();
+        let displayName = null;
+
+        if (user && user.full_name) {
+            displayName = user.full_name;
+        } else if (user && user.username) {
+            displayName = user.username;
+        }
+
+        // If no stored user, decode JWT token
+        if (!displayName) {
+            const token = Auth.getToken();
+            if (token) {
+                const payload = Auth.decodeJWT(token);
+                if (payload) {
+                    // JWT may have: sub (subject/username), email, user_id, name, etc.
+                    displayName = payload.name || payload.username || payload.sub || payload.email;
+                }
+            }
+        }
+
+        userNameElement.textContent = displayName || 'User';
+    }
+
     // Initialize filters first
     await LeadsPage.initializeFilters();
 
     // Initialize Add Lead modal dropdowns
     await LeadsPage.initializeAddLeadModal();
+
+    // Load statuses and users for inline editing (before loading leads)
+    await LeadsPage.loadStatusesForInlineEdit();
+    await LeadsPage.loadUsersForInlineEdit();
 
     // Then load leads
     await LeadsPage.loadLeads();
@@ -2600,6 +3471,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (deleteConfirmBtn) {
         deleteConfirmBtn.addEventListener('click', () => {
             LeadsPage.deleteLead();
+        });
+    }
+
+    // Wire up records per page selector
+    const recordsPerPageSelect = document.getElementById('records-per-page');
+    if (recordsPerPageSelect) {
+        recordsPerPageSelect.addEventListener('change', (e) => {
+            const value = e.target.value;
+            LeadsPage.pageSize = value === 'all' ? 'all' : parseInt(value);
+
+            // Re-populate table with new page size (populateTable clears automatically)
+            LeadsPage.populateTable(LeadsPage.allLeads);
         });
     }
 });
