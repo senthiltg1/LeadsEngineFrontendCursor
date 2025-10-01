@@ -105,6 +105,59 @@ const Auth = {
     },
 
     /**
+     * Get current user ID
+     * First tries from stored user data, falls back to decoding JWT token
+     * @returns {number|null} User ID or null
+     */
+    getUserId() {
+        // Try stored user data first
+        const user = this.getUser();
+        if (user && user.id) {
+            return user.id;
+        }
+
+        // Fall back to decoding JWT token
+        const token = this.getToken();
+        if (!token) {
+            return null;
+        }
+
+        try {
+            // Decode JWT token (without verification, just parsing)
+            const payload = this.decodeJWT(token);
+            return payload && payload.user_id ? payload.user_id : null;
+        } catch (error) {
+            console.error('Failed to decode JWT:', error);
+            return null;
+        }
+    },
+
+    /**
+     * Decode JWT token to extract payload
+     * Note: This does NOT verify the signature, just parses the payload
+     * @param {string} token - JWT token
+     * @returns {object|null} Decoded payload or null
+     */
+    decodeJWT(token) {
+        try {
+            // JWT structure: header.payload.signature
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                throw new Error('Invalid JWT structure');
+            }
+
+            // Decode the payload (second part)
+            const payload = parts[1];
+            // Base64 decode (handle URL-safe base64)
+            const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+            return JSON.parse(decoded);
+        } catch (error) {
+            console.error('JWT decode error:', error);
+            return null;
+        }
+    },
+
+    /**
      * Clear user information
      */
     clearUser() {

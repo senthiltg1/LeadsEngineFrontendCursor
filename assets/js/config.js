@@ -1,16 +1,46 @@
 /**
  * LeadsEngine Frontend Configuration
+ *
+ * Centralized configuration for the LeadsEngine frontend application.
+ * Contains API endpoints, base URL, storage keys, and default settings.
+ *
+ * Usage:
+ *   const token = localStorage.getItem(Config.TOKEN_KEY);
+ *   const response = await API.get(Config.ENDPOINTS.LEAD.LIST);
+ *
+ * Important:
+ *   - Object is frozen to prevent accidental modifications
+ *   - Update BASE_URL for different environments
+ *   - All endpoints are verified against endpoints.md
+ *
+ * @module Config
  */
 
 const Config = {
-    // API Base URL - adjust this to your backend server
+    /**
+     * Base URL for backend API
+     * Change this for different environments (dev, staging, production)
+     * @type {string}
+     */
     BASE_URL: 'http://localhost:8002',
 
-    // Local Storage Keys
+    /**
+     * LocalStorage key for JWT authentication token
+     * @type {string}
+     */
     TOKEN_KEY: 'leadsengine_token',
+
+    /**
+     * LocalStorage key for user data (optional, can use JWT instead)
+     * @type {string}
+     */
     USER_KEY: 'leadsengine_user',
 
-    // API Endpoints
+    /**
+     * API endpoint paths
+     * All paths verified against endpoints.md
+     * @type {Object}
+     */
     ENDPOINTS: {
         AUTH: {
             TOKEN: '/api/v1/auth/token',
@@ -42,20 +72,50 @@ const Config = {
         LEADSOURCE: {
             LIST: '/api/v1/leadsource/',
             WITH_RELATIONSHIPS: '/api/v1/leadsource/with-relationships'
+        },
+        LEADNOTE: {
+            LIST: '/api/v1/leadnote/',
+            CREATE: '/api/v1/leadnote/',
+            READ: '/api/v1/leadnote/',
+            UPDATE: '/api/v1/leadnote/',
+            DELETE: '/api/v1/leadnote/'
         }
     },
 
-    // Pagination defaults
+    /**
+     * Default page size for paginated API requests
+     * @type {number}
+     */
     DEFAULT_PAGE_SIZE: 50,
+
+    /**
+     * Default starting page for pagination
+     * @type {number}
+     */
     DEFAULT_PAGE: 1,
 
-    // Request timeout (ms)
+    /**
+     * Request timeout in milliseconds
+     * Requests longer than this will be aborted
+     * @type {number}
+     */
     REQUEST_TIMEOUT: 30000,
 
-    // Auth token header name
+    /**
+     * HTTP header name for authentication token
+     * @type {string}
+     */
     AUTH_HEADER: 'Authorization',
+
+    /**
+     * Authentication scheme for Bearer token
+     * @type {string}
+     */
     AUTH_SCHEME: 'Bearer'
 };
 
-// Freeze config to prevent modifications
+/**
+ * Freeze config object to prevent accidental modifications
+ * This ensures configuration remains constant throughout the application
+ */
 Object.freeze(Config);

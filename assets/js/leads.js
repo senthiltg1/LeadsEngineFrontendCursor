@@ -1,6 +1,49 @@
 /**
  * LeadsEngine Leads Page
  * Handles leads list display and management
+ *
+ * FEATURES:
+ * - Lead list table with pagination
+ * - Server-side filtering (status, source, search, date range)
+ * - Lead detail modal with tabs (Overview, Edit, Notes, Timeline)
+ * - Edit lead with dropdown components
+ * - Create notes for leads
+ * - Timeline with proper name resolution
+ *
+ * FILTERING:
+ * All filters work together simultaneously:
+ * - Search: Debounced text search (name, email, phone)
+ * - Status: Dropdown filter by lead status
+ * - Source: Dropdown filter by lead source
+ * - Date Range: Filter by created date (from/to)
+ * - Filter badges show active filters with remove icons
+ * - Clear button resets all filters
+ *
+ * ============================================================================
+ * API ENDPOINT VERIFICATION CHECKLIST
+ * ============================================================================
+ * Before implementing ANY API call:
+ * 1. Check endpoints.md for exact path and method
+ * 2. Check backend schema files for payload structure
+ * 3. Document endpoint + payload in code comments
+ * 4. Include curl test example in comments
+ * 5. Log full request details (URL, payload, headers)
+ *
+ * VERIFIED ENDPOINTS USED IN THIS FILE:
+ * ----------------------------------------------------------------------------
+ * GET  /api/v1/lead/                       - List leads (with pagination)
+ * GET  /api/v1/lead/with-relationships     - List leads with relationships + filters
+ *                                            Params: skip, limit, search, status_id, source_id, date_from, date_to
+ * GET  /api/v1/lead/{id}                   - Get single lead
+ * PUT  /api/v1/lead/{id}                   - Update lead
+ * GET  /api/v1/lead/{id}/timeline          - Get lead timeline events
+ * GET  /api/v1/leadnote/lead/{lead_id}     - List notes for lead
+ * POST /api/v1/leadnote/                   - Create new note (body, is_pinned, lead_id, user_id)
+ * GET  /api/v1/leadstatus/                 - List all statuses (for filter dropdown)
+ * GET  /api/v1/leadsource/                 - List all sources (for filter dropdown)
+ * GET  /api/v1/user/                       - List all users
+ * GET  /api/v1/user/{id}                   - Get single user
+ * ============================================================================
  */
 
 const LeadsPage = {
@@ -9,20 +52,63 @@ const LeadsPage = {
     allLeads: [],
     userMap: {},
 
+    // Filter state
+    filters: {
+        search: '',
+        status_id: null,
+        source_id: null,
+        date_from: '',
+        date_to: ''
+    },
+
+    // Filter dropdown instances
+    filterDropdowns: {
+        status: null,
+        source: null
+    },
+
     /**
-     * Load and display leads
+     * Load and display leads with optional filters
+     * @param {number} page - Page number (1-indexed)
+     * @param {object} filterOverrides - Optional filter overrides
      */
-    async loadLeads(page = 1) {
+    async loadLeads(page = 1, filterOverrides = null) {
         try {
             // Show loading state
             this.showLoadingState();
 
-            // Fetch leads and users in parallel
+            // Use provided filters or current filter state
+            const activeFilters = filterOverrides || this.filters;
+
+            // Build query parameters
             const params = {
                 skip: (page - 1) * this.pageSize,
                 limit: this.pageSize
             };
 
+            // Add filters to params (only if they have values)
+            if (activeFilters.search) {
+                params.search = activeFilters.search;
+            }
+            if (activeFilters.status_id) {
+                params.status_id = activeFilters.status_id;
+            }
+            if (activeFilters.source_id) {
+                params.source_id = activeFilters.source_id;
+            }
+            if (activeFilters.date_from) {
+                params.date_from = activeFilters.date_from;
+            }
+            if (activeFilters.date_to) {
+                params.date_to = activeFilters.date_to;
+            }
+
+            console.log('=== LOADING LEADS WITH FILTERS ===');
+            console.log('Page:', page);
+            console.log('Filters:', activeFilters);
+            console.log('Params:', params);
+
+            // Fetch leads and users in parallel
             const [leadsResponse, usersResponse] = await Promise.all([
                 API.get(Config.ENDPOINTS.LEAD.WITH_RELATIONSHIPS, params),
                 API.get(Config.ENDPOINTS.USER.LIST)
@@ -63,6 +149,9 @@ const LeadsPage = {
                 this.populateTable(this.allLeads);
             }
 
+            // Update filter display
+            this.updateFilterDisplay(leadsResponse.total_count || 0);
+
             // Hide loading state
             this.hideLoadingState();
 
@@ -71,6 +160,290 @@ const LeadsPage = {
             this.showError('Failed to load leads. Please refresh the page.');
             this.hideLoadingState();
         }
+    },
+
+    /**
+     * Initialize filter dropdowns and wire filter events
+     *
+     * Sets up the filter bar with:
+     * - Status dropdown component (fetches from /api/v1/leadstatus/)
+     * - Source dropdown component (fetches from /api/v1/leadsource/)
+     * - Search input with 500ms debounce
+     * - Date range inputs (from/to)
+     * - Clear filters button
+     *
+     * All filters work together - when ANY filter changes, all active
+     * filters are applied simultaneously via server-side filtering.
+     *
+     * Filter changes trigger applyFilters() which reloads leads from page 1.
+     *
+     * @returns {Promise<void>}
+     */
+    async initializeFilters() {
+        try {
+            // Initialize status filter dropdown
+            this.filterDropdowns.status = createStatusDropdown('#statusFilterContainer', {
+                includeEmpty: true,
+                emptyText: 'All Statuses',
+                onChange: (statusId, statusName) => {
+                    console.log('Status filter changed:', statusId, statusName);
+                    this.filters.status_id = statusId;
+                    this.applyFilters();
+                }
+            });
+
+            // Initialize source filter dropdown
+            this.filterDropdowns.source = createSourceDropdown('#sourceFilterContainer', {
+                includeEmpty: true,
+                emptyText: 'All Sources',
+                onChange: (sourceId, sourceName) => {
+                    console.log('Source filter changed:', sourceId, sourceName);
+                    this.filters.source_id = sourceId;
+                    this.applyFilters();
+                }
+            });
+
+            // Initialize both dropdowns in parallel
+            await Promise.all([
+                this.filterDropdowns.status.init(),
+                this.filterDropdowns.source.init()
+            ]);
+
+            console.log('Filter dropdowns initialized');
+
+            // Wire search input (debounced)
+            let searchTimeout;
+            $('#searchInput').on('input', () => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    this.filters.search = $('#searchInput').val().trim();
+                    console.log('Search filter changed:', this.filters.search);
+                    this.applyFilters();
+                }, 500); // 500ms debounce
+            });
+
+            // Wire date filters
+            $('#dateFromFilter').on('change', () => {
+                this.filters.date_from = $('#dateFromFilter').val();
+                console.log('Date from filter changed:', this.filters.date_from);
+                this.applyFilters();
+            });
+
+            $('#dateToFilter').on('change', () => {
+                this.filters.date_to = $('#dateToFilter').val();
+                console.log('Date to filter changed:', this.filters.date_to);
+                this.applyFilters();
+            });
+
+            // Wire clear filters button
+            $('#clearFilters').on('click', () => {
+                this.clearFilters();
+            });
+
+        } catch (error) {
+            console.error('Failed to initialize filters:', error);
+        }
+    },
+
+    /**
+     * Apply current filters - reload leads with filter parameters
+     *
+     * Called whenever any filter changes (status, source, search, dates).
+     * Resets to page 1 and reloads leads with all active filter parameters.
+     *
+     * Filters are sent to backend as query parameters:
+     * - search: string - searches name, email, phone
+     * - status_id: number - filters by lead status
+     * - source_id: number - filters by lead source
+     * - date_from: string - ISO date format (YYYY-MM-DD)
+     * - date_to: string - ISO date format (YYYY-MM-DD)
+     *
+     * @returns {Promise<void>}
+     */
+    async applyFilters() {
+        console.log('=== APPLYING FILTERS ===');
+        console.log('Current filters:', this.filters);
+        await this.loadLeads(1); // Reset to page 1 when filtering
+    },
+
+    /**
+     * Clear all filters and reload leads
+     *
+     * Resets all filter state to defaults and clears UI inputs:
+     * - Empties search input
+     * - Clears date range inputs
+     * - Resets status dropdown to "All Statuses"
+     * - Resets source dropdown to "All Sources"
+     *
+     * Then reloads leads without any filters applied.
+     */
+    clearFilters() {
+        console.log('=== CLEARING FILTERS ===');
+
+        // Reset filter state
+        this.filters = {
+            search: '',
+            status_id: null,
+            source_id: null,
+            date_from: '',
+            date_to: ''
+        };
+
+        // Reset UI elements
+        $('#searchInput').val('');
+        $('#dateFromFilter').val('');
+        $('#dateToFilter').val('');
+
+        // Reset dropdowns
+        if (this.filterDropdowns.status) {
+            this.filterDropdowns.status.setValue(null);
+        }
+        if (this.filterDropdowns.source) {
+            this.filterDropdowns.source.setValue(null);
+        }
+
+        // Reload leads without filters
+        this.loadLeads(1);
+    },
+
+    /**
+     * Update filter display showing results count and active filters
+     *
+     * Updates the UI to show:
+     * - Results count: "Showing X of Y leads (N filters active)"
+     * - Active filter badges with remove icons
+     * - Hides filter row when no filters or no results
+     *
+     * Each filter badge:
+     * - Shows filter name and value (e.g., "Status: Contacted")
+     * - Has × icon that calls removeFilter() to remove that filter
+     * - Color-coded: blue (search), info (status), green (source), yellow (dates)
+     *
+     * @param {number} totalCount - Total number of matching results from backend
+     */
+    updateFilterDisplay(totalCount) {
+        const filterStatusRow = document.getElementById('filterStatusRow');
+        const resultsCount = document.getElementById('resultsCount');
+        const activeFilterTags = document.getElementById('activeFilterTags');
+
+        if (!filterStatusRow || !resultsCount || !activeFilterTags) return;
+
+        // Count active filters
+        let activeFilterCount = 0;
+        const tags = [];
+
+        if (this.filters.search) {
+            activeFilterCount++;
+            tags.push(`
+                <span class="badge bg-primary">
+                    Search: "${this.escapeHtml(this.filters.search)}"
+                    <i class="fas fa-times ms-1" style="cursor: pointer;" onclick="LeadsPage.removeFilter('search')"></i>
+                </span>
+            `);
+        }
+
+        if (this.filters.status_id) {
+            activeFilterCount++;
+            const statusName = this.filterDropdowns.status?.getName() || 'Status';
+            tags.push(`
+                <span class="badge bg-info">
+                    Status: ${this.escapeHtml(statusName)}
+                    <i class="fas fa-times ms-1" style="cursor: pointer;" onclick="LeadsPage.removeFilter('status')"></i>
+                </span>
+            `);
+        }
+
+        if (this.filters.source_id) {
+            activeFilterCount++;
+            const sourceName = this.filterDropdowns.source?.getName() || 'Source';
+            tags.push(`
+                <span class="badge bg-success">
+                    Source: ${this.escapeHtml(sourceName)}
+                    <i class="fas fa-times ms-1" style="cursor: pointer;" onclick="LeadsPage.removeFilter('source')"></i>
+                </span>
+            `);
+        }
+
+        if (this.filters.date_from) {
+            activeFilterCount++;
+            tags.push(`
+                <span class="badge bg-warning text-dark">
+                    From: ${this.escapeHtml(this.filters.date_from)}
+                    <i class="fas fa-times ms-1" style="cursor: pointer;" onclick="LeadsPage.removeFilter('date_from')"></i>
+                </span>
+            `);
+        }
+
+        if (this.filters.date_to) {
+            activeFilterCount++;
+            tags.push(`
+                <span class="badge bg-warning text-dark">
+                    To: ${this.escapeHtml(this.filters.date_to)}
+                    <i class="fas fa-times ms-1" style="cursor: pointer;" onclick="LeadsPage.removeFilter('date_to')"></i>
+                </span>
+            `);
+        }
+
+        // Update results count
+        if (activeFilterCount > 0) {
+            resultsCount.textContent = `Showing ${this.allLeads.length} of ${totalCount} leads (${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active)`;
+            filterStatusRow.style.display = 'block';
+        } else {
+            resultsCount.textContent = `Showing ${this.allLeads.length} of ${totalCount} leads`;
+            filterStatusRow.style.display = totalCount > 0 ? 'block' : 'none';
+        }
+
+        // Update filter tags
+        activeFilterTags.innerHTML = tags.join('');
+    },
+
+    /**
+     * Remove a specific filter
+     *
+     * Called when user clicks × icon on a filter badge.
+     * Removes only the specified filter and keeps other filters active.
+     * Automatically reapplies remaining filters.
+     *
+     * Filter names:
+     * - 'search' - Clears search input
+     * - 'status' - Resets status dropdown
+     * - 'source' - Resets source dropdown
+     * - 'date_from' - Clears from date
+     * - 'date_to' - Clears to date
+     *
+     * @param {string} filterName - Name of filter to remove
+     */
+    removeFilter(filterName) {
+        console.log('=== REMOVING FILTER ===', filterName);
+
+        switch (filterName) {
+            case 'search':
+                this.filters.search = '';
+                $('#searchInput').val('');
+                break;
+            case 'status':
+                this.filters.status_id = null;
+                if (this.filterDropdowns.status) {
+                    this.filterDropdowns.status.setValue(null);
+                }
+                break;
+            case 'source':
+                this.filters.source_id = null;
+                if (this.filterDropdowns.source) {
+                    this.filterDropdowns.source.setValue(null);
+                }
+                break;
+            case 'date_from':
+                this.filters.date_from = '';
+                $('#dateFromFilter').val('');
+                break;
+            case 'date_to':
+                this.filters.date_to = '';
+                $('#dateToFilter').val('');
+                break;
+        }
+
+        this.applyFilters();
     },
 
     /**
@@ -476,6 +849,9 @@ const LeadsPage = {
             // Wire the Edit tab with dropdowns
             await this.wireEditTab(lead);
 
+            // Setup note creation functionality
+            this.setupNoteCreation(leadId);
+
         } catch (error) {
             console.error('Failed to load lead details:', error);
             this.showModalError('Failed to load lead details. Please try again.');
@@ -864,7 +1240,7 @@ const LeadsPage = {
      * Show loading state in notes tab
      */
     showNotesLoadingState() {
-        const notesHistory = document.querySelector('#notes .card-body');
+        const notesHistory = document.getElementById('notesHistory');
         if (notesHistory) {
             notesHistory.innerHTML = `
                 <div class="text-center py-4">
@@ -880,7 +1256,7 @@ const LeadsPage = {
      * @param {String} message - Error message
      */
     showNotesError(message) {
-        const notesHistory = document.querySelector('#notes .card-body');
+        const notesHistory = document.getElementById('notesHistory');
         if (notesHistory) {
             notesHistory.innerHTML = `
                 <div class="text-center py-4">
@@ -896,7 +1272,7 @@ const LeadsPage = {
      * @param {Array} notes - Array of note objects
      */
     async populateNotesTab(notes) {
-        const notesHistory = document.querySelector('#notes .card-body');
+        const notesHistory = document.getElementById('notesHistory');
         if (!notesHistory) return;
 
         // If no notes, show empty state
@@ -1010,6 +1386,140 @@ const LeadsPage = {
 
         // Default
         return 'Unknown User';
+    },
+
+    /**
+     * Setup note creation functionality
+     *
+     * ENDPOINT VERIFICATION (from endpoints.md):
+     * POST /api/v1/leadnote/ - create_leadnote_api_v1_leadnote__post
+     *
+     * PAYLOAD SCHEMA (from schema_leadnote.py):
+     * {
+     *   body: string (required),
+     *   is_pinned: boolean (default: false),
+     *   lead_id: integer (required),
+     *   user_id: integer (optional, defaults to current user if omitted)
+     * }
+     *
+     * CURL TEST EXAMPLE:
+     * curl -X POST http://localhost:8002/api/v1/leadnote/ \
+     *   -H "Authorization: Bearer $TOKEN" \
+     *   -H "Content-Type: application/json" \
+     *   -d '{"body":"Test note","is_pinned":false,"lead_id":3,"user_id":1}'
+     *
+     * @param {String|Number} leadId - Lead ID
+     */
+    setupNoteCreation(leadId) {
+        const addNoteBtn = document.getElementById('add-note-btn');
+        const noteTextarea = document.getElementById('new-note-text');
+        const errorDiv = document.getElementById('note-creation-error');
+        const successDiv = document.getElementById('note-creation-success');
+
+        if (!addNoteBtn || !noteTextarea) {
+            console.error('Note creation elements not found');
+            return;
+        }
+
+        // Remove any existing listeners
+        const newBtn = addNoteBtn.cloneNode(true);
+        addNoteBtn.parentNode.replaceChild(newBtn, addNoteBtn);
+
+        // Add click handler
+        newBtn.addEventListener('click', async () => {
+            // Hide previous messages
+            if (errorDiv) errorDiv.style.display = 'none';
+            if (successDiv) successDiv.style.display = 'none';
+
+            // Get note text and validate
+            const noteText = noteTextarea.value.trim();
+            if (!noteText) {
+                if (errorDiv) {
+                    errorDiv.textContent = 'Please enter a note before saving.';
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+
+            try {
+                // Show loading state
+                newBtn.disabled = true;
+                newBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Adding...';
+
+                // Get current user ID from JWT token
+                const userId = Auth.getUserId();
+                console.log('=== AUTH DEBUG ===');
+                console.log('User ID from Auth.getUserId():', userId);
+                console.log('Token exists:', !!Auth.getToken());
+                console.log('User data:', Auth.getUser());
+
+                if (!userId) {
+                    throw new Error('User ID not found. Please log in again.');
+                }
+
+                // VERIFIED ENDPOINT: POST /api/v1/leadnote/
+                // Reference: endpoints.md line 117
+                const payload = {
+                    body: noteText,
+                    is_pinned: false,
+                    lead_id: parseInt(leadId),
+                    user_id: parseInt(userId)
+                };
+
+                console.log('=== CREATE NOTE REQUEST ===');
+                console.log('Endpoint:', Config.ENDPOINTS.LEADNOTE.CREATE);
+                console.log('Lead ID:', leadId);
+                console.log('User ID:', userId);
+                console.log('Payload:', JSON.stringify(payload, null, 2));
+
+                const response = await API.post(Config.ENDPOINTS.LEADNOTE.CREATE, payload);
+                console.log('=== CREATE NOTE SUCCESS ===');
+                console.log('Response:', response);
+
+                // Success: clear textarea
+                noteTextarea.value = '';
+
+                // Show success message
+                if (successDiv) {
+                    successDiv.textContent = 'Note added successfully!';
+                    successDiv.style.display = 'block';
+                    // Auto-hide after 3 seconds
+                    setTimeout(() => {
+                        successDiv.style.display = 'none';
+                    }, 3000);
+                }
+
+                // Refresh notes list
+                await this.loadLeadNotes(leadId);
+
+            } catch (error) {
+                console.error('=== CREATE NOTE FAILED ===');
+                console.error('Error object:', error);
+                console.error('Error message:', error.message);
+                console.error('Error response:', error.response);
+                console.error('Error response data:', error.response?.data);
+                console.error('Error response status:', error.response?.status);
+                console.error('Full error details:', JSON.stringify(error, null, 2));
+
+                // Show detailed error message
+                if (errorDiv) {
+                    let errorMsg = 'Failed to add note. ';
+                    if (error.response?.data?.detail) {
+                        errorMsg += error.response.data.detail;
+                    } else if (error.response?.status === 422) {
+                        errorMsg += 'Validation error. Check console for details.';
+                    } else {
+                        errorMsg += 'Please try again.';
+                    }
+                    errorDiv.textContent = errorMsg;
+                    errorDiv.style.display = 'block';
+                }
+            } finally {
+                // Re-enable button
+                newBtn.disabled = false;
+                newBtn.innerHTML = '<i class="fas fa-plus me-1"></i>Add Note';
+            }
+        });
     },
 
     /**
@@ -1744,7 +2254,13 @@ const LeadsPage = {
 };
 
 // Initialize leads when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-    LeadsPage.loadLeads();
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize filters first
+    await LeadsPage.initializeFilters();
+
+    // Then load leads
+    await LeadsPage.loadLeads();
+
+    // Setup event listeners
     LeadsPage.setupEventListeners();
 });

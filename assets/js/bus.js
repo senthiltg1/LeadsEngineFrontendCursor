@@ -1,10 +1,38 @@
 /**
  * LeadsEngine Event Bus
- * Simple publish/subscribe event system for decoupled component communication
+ *
+ * Simple publish/subscribe event system for decoupled component communication.
+ * Enables loose coupling between modules without direct dependencies.
+ *
+ * Usage:
+ *   // Subscribe to event
+ *   const unsubscribe = Bus.subscribe('auth:changed', (data) => {
+ *       console.log('Auth changed:', data.authenticated);
+ *   });
+ *
+ *   // Publish event
+ *   Bus.publish('auth:changed', {authenticated: true, user: {...}});
+ *
+ *   // Unsubscribe
+ *   unsubscribe();
+ *
+ * Common Events:
+ *   - 'auth:changed' - Authentication state changed {authenticated, user}
+ *   - 'lead:created' - New lead created {lead}
+ *   - 'lead:updated' - Lead updated {lead}
+ *   - 'lead:deleted' - Lead deleted {id}
+ *   - 'notification:show' - Show notification {type, message}
+ *
+ * @module Bus
  */
 
 const Bus = {
-    // Storage for event listeners
+    /**
+     * Storage for event listeners
+     * Structure: {eventName: [callback1, callback2, ...]}
+     * @private
+     * @type {Object.<string, Function[]>}
+     */
     events: {},
 
     /**
