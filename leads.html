@@ -186,6 +186,7 @@
                                 <th>
                                     <input type="checkbox" class="form-check-input" id="selectAll">
                                 </th>
+                                <th>ID <i class="fas fa-sort ms-1"></i></th>
                                 <th>Name <i class="fas fa-sort ms-1"></i></th>
                                 <th>Email <i class="fas fa-sort ms-1"></i></th>
                                 <th>Phone <i class="fas fa-sort ms-1"></i></th>
@@ -519,6 +520,142 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Lead Modal -->
+    <div class="modal fade" id="addLeadModal" tabindex="-1" aria-labelledby="addLeadModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addLeadModalLabel">
+                        <i class="fas fa-user-plus me-2"></i>Add New Lead
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-lead-form">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">First Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="add-first-name" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Last Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="add-last-name" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" id="add-email">
+                                <small class="text-muted">Email OR Phone is required</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Phone</label>
+                                <input type="tel" class="form-control" id="add-phone">
+                                <small class="text-muted">Email OR Phone is required</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Status <span class="text-danger">*</span></label>
+                                <div id="add-status-dropdown"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Source <span class="text-danger">*</span></label>
+                                <div id="add-source-dropdown"></div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Budget Band</label>
+                                <select class="form-select" id="add-budget-band">
+                                    <option value="UNKNOWN" selected>Unknown</option>
+                                    <option value="LOW">Low ($0-$5K)</option>
+                                    <option value="MID">Mid ($5K-$15K)</option>
+                                    <option value="HIGH">High ($15K+)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Insurance Provider</label>
+                                <input type="text" class="form-control" id="add-insurance" placeholder="e.g., Delta Dental">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Zip Code</label>
+                                <input type="text" class="form-control" id="add-zip" maxlength="10" placeholder="e.g., 12345">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">UTM Source</label>
+                                <input type="text" class="form-control" id="add-utm-source" placeholder="e.g., google, facebook">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">UTM Campaign</label>
+                                <input type="text" class="form-control" id="add-utm-campaign" placeholder="e.g., spring_2024">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Assigned To</label>
+                                <div id="add-user-dropdown"></div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Initial Notes</label>
+                            <textarea class="form-control" id="add-notes" rows="3" placeholder="Enter any initial notes about this lead..."></textarea>
+                        </div>
+
+                        <div id="add-lead-error" class="alert alert-danger" style="display: none;"></div>
+                        <div id="add-lead-success" class="alert alert-success" style="display: none;"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="create-lead-btn">
+                        <i class="fas fa-plus me-1"></i>Create Lead
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         Delete Confirmation Modal
+         ============================================
+         Purpose: Confirm lead deletion before proceeding
+         Notes: Shows lead name and cannot be undone warning
+         ============================================ -->
+    <div class="modal fade" id="deleteLeadModal" tabindex="-1" aria-labelledby="deleteLeadModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteLeadModalLabel">Delete Lead?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">Are you sure you want to delete <strong id="delete-lead-name"></strong>?</p>
+                    <p class="text-danger mb-0">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        This action cannot be undone.
+                    </p>
+                    <!-- Error message container -->
+                    <div id="delete-lead-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="delete-cancel-btn">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="delete-confirm-btn">
+                        <i class="fas fa-trash me-1"></i>Delete
+                    </button>
                 </div>
             </div>
         </div>

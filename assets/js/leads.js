@@ -31,18 +31,20 @@
  *
  * VERIFIED ENDPOINTS USED IN THIS FILE:
  * ----------------------------------------------------------------------------
- * GET  /api/v1/lead/                       - List leads (with pagination)
- * GET  /api/v1/lead/with-relationships     - List leads with relationships + filters
- *                                            Params: skip, limit, search, status_id, source_id, date_from, date_to
- * GET  /api/v1/lead/{id}                   - Get single lead
- * PUT  /api/v1/lead/{id}                   - Update lead
- * GET  /api/v1/lead/{id}/timeline          - Get lead timeline events
- * GET  /api/v1/leadnote/lead/{lead_id}     - List notes for lead
- * POST /api/v1/leadnote/                   - Create new note (body, is_pinned, lead_id, user_id)
- * GET  /api/v1/leadstatus/                 - List all statuses (for filter dropdown)
- * GET  /api/v1/leadsource/                 - List all sources (for filter dropdown)
- * GET  /api/v1/user/                       - List all users
- * GET  /api/v1/user/{id}                   - Get single user
+ * GET    /api/v1/lead/                       - List leads (with pagination)
+ * GET    /api/v1/lead/with-relationships     - List leads with relationships + filters
+ *                                              Params: skip, limit, search, status_id, source_id, date_from, date_to
+ * GET    /api/v1/lead/{id}                   - Get single lead
+ * POST   /api/v1/lead/                       - Create new lead
+ * PUT    /api/v1/lead/{id}                   - Update lead
+ * DELETE /api/v1/lead/{id}/hard-delete       - Delete lead (hard delete)
+ * GET    /api/v1/lead/{id}/timeline          - Get lead timeline events
+ * GET    /api/v1/leadnote/lead/{lead_id}     - List notes for lead
+ * POST   /api/v1/leadnote/                   - Create new note (body, is_pinned, lead_id, user_id)
+ * GET    /api/v1/leadstatus/                 - List all statuses (for filter dropdown)
+ * GET    /api/v1/leadsource/                 - List all sources (for filter dropdown)
+ * GET    /api/v1/user/                       - List all users
+ * GET    /api/v1/user/{id}                   - Get single user
  * ============================================================================
  */
 
@@ -66,6 +68,17 @@ const LeadsPage = {
         status: null,
         source: null
     },
+
+    // Add Lead modal dropdown instances
+    addLeadDropdowns: {
+        status: null,
+        source: null,
+        user: null
+    },
+
+    // Delete confirmation modal state
+    deleteModal: null,
+    leadToDelete: null,
 
     /**
      * Load and display leads with optional filters
@@ -494,12 +507,14 @@ const LeadsPage = {
         tr.innerHTML = `
             <td><input type="checkbox" class="form-check-input"></td>
             <td>
+                <span class="badge bg-secondary">#${leadId}</span>
+            </td>
+            <td>
                 <div class="d-flex align-items-center">
                     <img src="https://via.placeholder.com/40x40/4A90E2/FFFFFF?text=${encodeURIComponent(initials)}"
                          class="rounded-circle me-3" width="40" height="40" alt="${name}">
                     <div>
                         <div class="fw-semibold">${this.escapeHtml(name)}</div>
-                        <small class="text-muted">ID: #${leadId}</small>
                     </div>
                 </div>
             </td>
@@ -752,7 +767,7 @@ const LeadsPage = {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="text-center py-5">
+                    <td colspan="10" class="text-center py-5">
                         <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
                         <div>Loading leads...</div>
                     </td>
@@ -776,7 +791,7 @@ const LeadsPage = {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="text-center py-5">
+                    <td colspan="10" class="text-center py-5">
                         <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
                         <div class="text-muted">No leads found</div>
                         <button class="btn btn-primary mt-3">
@@ -2219,6 +2234,151 @@ const LeadsPage = {
         }
     },
 
+    async initializeAddLeadModal() {
+        try {
+            this.addLeadDropdowns.status = createStatusDropdown('#add-status-dropdown', {
+                includeEmpty: false,
+                onChange: (statusId, statusName) => {
+                    console.log('Status selected:', statusId, statusName);
+                }
+            });
+
+            this.addLeadDropdowns.source = createSourceDropdown('#add-source-dropdown', {
+                includeEmpty: false,
+                onChange: (sourceId, sourceName) => {
+                    console.log('Source selected:', sourceId, sourceName);
+                }
+            });
+
+            this.addLeadDropdowns.user = createUserDropdown('#add-user-dropdown', {
+                includeEmpty: true,
+                emptyText: 'Unassigned',
+                onChange: (userId, userName) => {
+                    console.log('User selected:', userId, userName);
+                }
+            });
+
+            await Promise.all([
+                this.addLeadDropdowns.status.init(),
+                this.addLeadDropdowns.source.init(),
+                this.addLeadDropdowns.user.init()
+            ]);
+
+            console.log('Add Lead modal dropdowns initialized');
+        } catch (error) {
+            console.error('Failed to initialize Add Lead modal dropdowns:', error);
+        }
+    },
+
+    async createLead() {
+        console.log('=== CREATE LEAD STARTED ===');
+
+        const createButton = document.getElementById('create-lead-btn');
+        const errorDiv = document.getElementById('add-lead-error');
+        const successDiv = document.getElementById('add-lead-success');
+
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+
+        if (createButton) {
+            createButton.disabled = true;
+            createButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Creating...';
+        }
+
+        try {
+            const firstName = $('#add-first-name').val().trim();
+            const lastName = $('#add-last-name').val().trim();
+            const email = $('#add-email').val().trim();
+            const phone = $('#add-phone').val().trim();
+            const budgetBand = $('#add-budget-band').val();
+            const insurance = $('#add-insurance').val().trim();
+            const zip = $('#add-zip').val().trim();
+            const utmSource = $('#add-utm-source').val().trim();
+            const utmCampaign = $('#add-utm-campaign').val().trim();
+            const notes = $('#add-notes').val().trim();
+
+            const statusId = this.addLeadDropdowns.status.getValue();
+            const sourceId = this.addLeadDropdowns.source.getValue();
+            const assignedToUserId = this.addLeadDropdowns.user.getValue();
+
+            if (!firstName) {
+                throw new Error('First name is required');
+            }
+            if (!lastName) {
+                throw new Error('Last name is required');
+            }
+            if (!email && !phone) {
+                throw new Error('Either email or phone is required');
+            }
+            if (!statusId) {
+                throw new Error('Status is required');
+            }
+            if (!sourceId) {
+                throw new Error('Source is required');
+            }
+
+            const payload = {
+                first_name: firstName,
+                last_name: lastName,
+                email: email || '',
+                phone: phone || '',
+                source_id: sourceId,
+                status_id: statusId,
+                notes: notes || '',
+                utm_source: utmSource || '',
+                utm_campaign: utmCampaign || '',
+                budget_band: budgetBand || 'UNKNOWN',
+                insurance: insurance || '',
+                zip: zip || ''
+            };
+
+            if (assignedToUserId) {
+                payload.assigned_to_user_id = assignedToUserId;
+            }
+
+            console.log('=== PAYLOAD TO SEND ===', payload);
+            console.log('Endpoint:', Config.ENDPOINTS.LEAD.CREATE);
+
+            const response = await API.post(Config.ENDPOINTS.LEAD.CREATE, payload);
+
+            console.log('Lead created successfully:', response);
+
+            if (createButton) {
+                createButton.disabled = false;
+                createButton.innerHTML = '<i class="fas fa-plus me-1"></i>Create Lead';
+            }
+
+            successDiv.textContent = 'Lead created successfully!';
+            successDiv.style.display = 'block';
+
+            $('#add-lead-form')[0].reset();
+            this.addLeadDropdowns.status.setValue(null);
+            this.addLeadDropdowns.source.setValue(null);
+            this.addLeadDropdowns.user.setValue(null);
+
+            setTimeout(() => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('addLeadModal'));
+                if (modal) {
+                    modal.hide();
+                }
+                successDiv.style.display = 'none';
+            }, 1500);
+
+            await this.loadLeads();
+
+        } catch (error) {
+            console.error('Failed to create lead:', error);
+
+            if (createButton) {
+                createButton.disabled = false;
+                createButton.innerHTML = '<i class="fas fa-plus me-1"></i>Create Lead';
+            }
+
+            errorDiv.textContent = error.message || 'Failed to create lead. Please try again.';
+            errorDiv.style.display = 'block';
+        }
+    },
+
     /**
      * Setup event listeners for lead actions
      */
@@ -2242,13 +2402,173 @@ const LeadsPage = {
                 // TODO: Implement edit functionality
             }
 
-            // Delete button (placeholder)
+            // Delete button
+            // TODO: Add role-based permission check - only SuperAdmin/Admin (roles 1,2) should see delete button
             if (e.target.closest('.delete-lead-btn')) {
                 const button = e.target.closest('.delete-lead-btn');
-                const leadId = button.getAttribute('data-lead-id');
-                console.log('Delete lead:', leadId);
-                // TODO: Implement delete functionality
+                const leadId = parseInt(button.getAttribute('data-lead-id'));
+                console.log('Delete lead clicked:', leadId);
+                this.showDeleteConfirmation(leadId);
             }
+        });
+    },
+
+    /**
+     * Show delete confirmation modal for a lead
+     * @param {number} leadId - ID of lead to delete
+     */
+    showDeleteConfirmation(leadId) {
+        console.log('=== SHOW DELETE CONFIRMATION ===');
+        console.log('Lead ID:', leadId);
+
+        // Find lead in allLeads array
+        const lead = this.allLeads.find(l => l.id === leadId);
+        if (!lead) {
+            console.error('Lead not found:', leadId);
+            return;
+        }
+
+        // Store lead info for deletion
+        this.leadToDelete = {
+            id: leadId,
+            name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown Lead'
+        };
+
+        console.log('Lead to delete:', this.leadToDelete);
+
+        // Update modal content
+        document.getElementById('delete-lead-name').textContent = this.leadToDelete.name;
+        document.getElementById('delete-lead-error').style.display = 'none';
+
+        // Initialize and show modal
+        if (!this.deleteModal) {
+            this.deleteModal = new bootstrap.Modal(document.getElementById('deleteLeadModal'));
+        }
+        this.deleteModal.show();
+    },
+
+    /**
+     * Delete lead (hard delete)
+     * Called when user confirms deletion
+     *
+     * ENDPOINT: DELETE /api/v1/lead/{id}/hard-delete
+     * Backend automatically logs LEAD_DELETED event
+     *
+     * TODO: Add role-based permission check - only SuperAdmin/Admin (roles 1,2) can delete
+     */
+    async deleteLead() {
+        if (!this.leadToDelete) {
+            console.error('No lead selected for deletion');
+            return;
+        }
+
+        console.log('=== DELETE LEAD STARTED ===');
+        console.log('Deleting lead:', this.leadToDelete);
+
+        const confirmBtn = document.getElementById('delete-confirm-btn');
+        const cancelBtn = document.getElementById('delete-cancel-btn');
+        const errorDiv = document.getElementById('delete-lead-error');
+
+        // Hide error message
+        errorDiv.style.display = 'none';
+
+        // Show loading state
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Deleting...';
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+        }
+
+        try {
+            const endpoint = `${Config.ENDPOINTS.LEAD.DELETE}${this.leadToDelete.id}/hard-delete`;
+            console.log('DELETE endpoint:', endpoint);
+
+            const response = await API.delete(endpoint);
+            console.log('Lead deleted successfully:', response);
+
+            // Close modal
+            this.deleteModal.hide();
+
+            // Remove lead from allLeads array
+            this.allLeads = this.allLeads.filter(l => l.id !== this.leadToDelete.id);
+
+            // Remove row from table (don't reload entire list)
+            const row = document.querySelector(`tr[data-lead-id="${this.leadToDelete.id}"]`);
+            if (row) {
+                row.remove();
+                console.log('Lead row removed from table');
+            }
+
+            // Show success toast
+            this.showSuccessToast(`Lead "${this.leadToDelete.name}" deleted successfully`);
+
+            // Clear leadToDelete
+            this.leadToDelete = null;
+
+            console.log('=== DELETE LEAD COMPLETED ===');
+
+        } catch (error) {
+            console.error('Failed to delete lead:', error);
+
+            // Show error in modal
+            errorDiv.textContent = error.message || 'Failed to delete lead. Please try again.';
+            errorDiv.style.display = 'block';
+
+            // Keep modal open for retry
+
+        } finally {
+            // Reset button states
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-trash me-1"></i>Delete';
+            }
+            if (cancelBtn) {
+                cancelBtn.disabled = false;
+            }
+        }
+    },
+
+    /**
+     * Show success toast notification
+     * @param {string} message - Success message to display
+     */
+    showSuccessToast(message) {
+        // Create toast container if it doesn't exist
+        let toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            document.body.appendChild(toastContainer);
+        }
+
+        // Create toast element
+        const toastId = `toast-${Date.now()}`;
+        const toastHtml = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="fas fa-check-circle me-2"></i>${this.escapeHtml(message)}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+
+        // Show toast
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, {
+            autohide: true,
+            delay: 3000
+        });
+        toast.show();
+
+        // Remove toast element after it's hidden
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
         });
     }
 };
@@ -2258,9 +2578,28 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Initialize filters first
     await LeadsPage.initializeFilters();
 
+    // Initialize Add Lead modal dropdowns
+    await LeadsPage.initializeAddLeadModal();
+
     // Then load leads
     await LeadsPage.loadLeads();
 
     // Setup event listeners
     LeadsPage.setupEventListeners();
+
+    // Wire up Create Lead button
+    const createLeadBtn = document.getElementById('create-lead-btn');
+    if (createLeadBtn) {
+        createLeadBtn.addEventListener('click', () => {
+            LeadsPage.createLead();
+        });
+    }
+
+    // Wire up Delete Confirm button
+    const deleteConfirmBtn = document.getElementById('delete-confirm-btn');
+    if (deleteConfirmBtn) {
+        deleteConfirmBtn.addEventListener('click', () => {
+            LeadsPage.deleteLead();
+        });
+    }
 });

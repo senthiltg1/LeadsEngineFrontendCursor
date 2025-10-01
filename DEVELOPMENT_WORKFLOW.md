@@ -296,6 +296,114 @@ async function createNote(leadId, noteText) {
 
 Add the new endpoint with complete documentation.
 
+---
+
+## Event Logging Pattern
+
+**✅ CONFIRMED (2025-10-01): Backend handles ALL event logging automatically.**
+
+### Backend Auto-Logging Status
+
+| Action | Event Type | Backend Auto-Logs? | Frontend Action |
+|--------|------------|-------------------|----------------|
+| Create new lead (POST /lead/) | `LEAD_CREATED` | ✅ YES | Just call API |
+| Update lead fields (PUT /lead/{id}) | `FIELD_CHANGED` | ✅ YES (per field) | Just call API |
+| Delete lead | `LEAD_DELETED` | ✅ YES | Just call API |
+| Status change | `STATUS_CHANGED` | ✅ YES (via lead_status_history) | Just call API |
+| Source change | `SOURCE_CHANGED` | ✅ YES (with old/new names) | Just call API |
+| Add note (POST /leadnote/) | `NOTE_ADDED` | ✅ YES | Just call API |
+| Assign lead | `LEAD_ASSIGNED` | ✅ YES | Just call API |
+
+### Frontend Event Logging Policy
+
+**🚫 FRONTEND NEVER CALLS `/api/v1/leadevent/` DIRECTLY**
+
+Backend automatically:
+- Logs all mutations (create, update, delete)
+- Includes proper `actor_user_id` from JWT token
+- Creates individual `FIELD_CHANGED` events for each changed field
+- Adds descriptive `old_name`/`new_name` for relationship changes (source, status)
+- Maintains complete audit trail in `lead_events` table
+
+### Implementation Pattern
+
+```javascript
+// ✅ CORRECT - Just call the mutation API
+async createLead() {
+    const payload = { /* lead data */ };
+    const response = await API.post('/api/v1/lead/', payload);
+
+    // Backend automatically logs LEAD_CREATED event
+    // with proper actor attribution
+
+    // Continue with success handling...
+}
+
+async updateLead() {
+    const payload = { /* updated fields */ };
+    const response = await API.put(`/api/v1/lead/${leadId}`, payload);
+
+    // Backend automatically logs FIELD_CHANGED events
+    // for each changed field with old/new values
+
+    // Continue with success handling...
+}
+
+// ❌ INCORRECT - Don't do this!
+async createLead() {
+    const response = await API.post('/api/v1/lead/', payload);
+
+    // DON'T manually log events - creates duplicates!
+    // await API.post('/api/v1/leadevent/', eventPayload);
+}
+```
+
+### Event Logging Rules
+
+1. **Never call `/api/v1/leadevent/` from frontend** - Backend handles it
+2. **Just perform mutations** - Create, update, delete leads normally
+3. **Backend logs everything** - With proper actor attribution
+4. **Check timeline to verify** - Events appear automatically after mutations
+5. **Simpler frontend** - Less code, no duplicate event logic
+
+### Verifying Backend Auto-Logging
+
+After any lead mutation, verify events appear automatically:
+
+```javascript
+// 1. Perform mutation (create, update, etc.)
+const response = await API.post('/api/v1/lead/', payload);
+const leadId = response.id;
+
+// 2. Check timeline to verify backend logged the event
+const timeline = await API.get(`/api/v1/lead/${leadId}/timeline`);
+console.log('Timeline events:', timeline);
+
+// 3. You should see events like:
+// - LEAD_CREATED (on create)
+// - FIELD_CHANGED (on update, one per field)
+// - STATUS_CHANGED (on status change)
+// All with proper actor_user_id from JWT
+```
+
+### Event Endpoint (For Reference Only)
+
+**⚠️ Frontend should NOT call this endpoint - backend handles it automatically**
+
+```
+GET /api/v1/lead/{id}/timeline
+- Returns all events for a lead
+- Read-only for frontend
+- Timeline display only
+
+POST /api/v1/leadevent/
+- Backend-only endpoint
+- Frontend should NEVER call this
+- Backend auto-logs on mutations
+```
+
+---
+
 ### API Integration Checklist
 
 - [ ] Checked `endpoints.md` for exact path and method

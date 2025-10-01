@@ -79,6 +79,14 @@ const Config = {
             READ: '/api/v1/leadnote/',
             UPDATE: '/api/v1/leadnote/',
             DELETE: '/api/v1/leadnote/'
+        },
+        LEADEVENT: {
+            LIST: '/api/v1/leadevent/',
+            CREATE: '/api/v1/leadevent/',
+            READ: '/api/v1/leadevent/',
+            UPDATE: '/api/v1/leadevent/',
+            DELETE: '/api/v1/leadevent/',
+            WITH_RELATIONSHIPS: '/api/v1/leadevent/with-relationships'
         }
     },
 

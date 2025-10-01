@@ -36,6 +36,11 @@ const API = {
         try {
             const response = await fetch(url, config);
 
+            // Handle 204 No Content - success with no body
+            if (response.status === 204) {
+                return { success: true, message: 'Operation completed successfully' };
+            }
+
             // Handle authentication errors
             if (response.status === 401 || response.status === 403) {
                 // Clear token and redirect to login
@@ -55,6 +60,12 @@ const API = {
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            // Only try to parse JSON if there's content
+            const contentLength = response.headers.get('content-length');
+            if (contentLength === '0') {
+                return { success: true };
             }
 
             // Parse response
@@ -193,6 +204,7 @@ const API = {
 
     /**
      * DELETE request
+     * Handles empty/non-JSON responses (e.g., 204 No Content)
      * @param {string} endpoint - API endpoint
      * @returns {Promise<object>}
      */
