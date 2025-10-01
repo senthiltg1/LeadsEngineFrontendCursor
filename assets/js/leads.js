@@ -505,6 +505,9 @@ const LeadsPage = {
 
         // Update records counter
         this.updateRecordsCounter(this.displayedLeads.length, leads.length);
+
+        // Update pagination controls
+        this.updatePaginationControls(leads.length);
     },
 
     /**
@@ -736,37 +739,124 @@ const LeadsPage = {
 
     /**
      * Apply pagination to leads array
+     * Uses currentPage and pageSize to slice the array
      * @param {Array} leads - Full array of leads
-     * @returns {Array} Paginated leads
+     * @returns {Array} Paginated leads for current page
      */
     applyPagination(leads) {
         const pageSize = this.pageSize;
 
         // If pageSize is 'all' or larger than total, return all leads
         if (pageSize === 'all' || pageSize >= leads.length) {
+            this.currentPage = 1; // Reset to page 1
             return leads;
         }
 
-        // Return first pageSize leads (client-side pagination)
-        return leads.slice(0, pageSize);
+        // Calculate start and end indices for current page
+        const startIndex = (this.currentPage - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+
+        // Return slice for current page
+        return leads.slice(startIndex, endIndex);
     },
 
     /**
      * Update records counter display
-     * @param {number} displayed - Number of displayed records
+     * Shows current page range: "Showing 1-10 of 12 leads" or "Showing 11-12 of 12 leads"
+     * @param {number} displayed - Number of displayed records on current page
      * @param {number} total - Total number of records
      */
     updateRecordsCounter(displayed, total) {
         const counterElement = document.getElementById('records-counter');
-        if (counterElement) {
-            if (total === 0) {
-                counterElement.textContent = 'No leads found';
-            } else if (displayed === total) {
-                counterElement.textContent = `Showing 1-${total} of ${total} leads`;
-            } else {
-                // Show range: 1-50 of 127
-                counterElement.textContent = `Showing 1-${displayed} of ${total} leads`;
-            }
+        if (!counterElement) return;
+
+        if (total === 0) {
+            counterElement.textContent = 'No leads found';
+            return;
+        }
+
+        // Calculate start and end indices for current page
+        const startIndex = (this.currentPage - 1) * this.pageSize + 1;
+        const endIndex = Math.min(startIndex + displayed - 1, total);
+
+        if (total === displayed && this.currentPage === 1) {
+            // All records fit on one page
+            counterElement.textContent = `Showing 1-${total} of ${total} leads`;
+        } else {
+            // Multiple pages: show current range
+            counterElement.textContent = `Showing ${startIndex}-${endIndex} of ${total} leads`;
+        }
+    },
+
+    /**
+     * Update pagination controls (prev/next buttons, page info)
+     * Shows/hides pagination based on whether multiple pages exist
+     * @param {number} totalRecords - Total number of records
+     */
+    updatePaginationControls(totalRecords) {
+        const paginationContainer = document.getElementById('pagination-container');
+        if (!paginationContainer) return;
+
+        // Calculate total pages
+        const totalPages = Math.ceil(totalRecords / this.pageSize);
+
+        // Hide pagination if only one page or pageSize is 'all'
+        if (totalPages <= 1 || this.pageSize === 'all') {
+            paginationContainer.style.display = 'none';
+            return;
+        }
+
+        // Show pagination
+        paginationContainer.style.display = 'flex';
+
+        // Build pagination HTML
+        paginationContainer.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center w-100">
+                <button class="btn btn-outline-primary btn-sm pagination-prev"
+                        ${this.currentPage === 1 ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-left me-1"></i> Previous
+                </button>
+                <span class="text-muted">
+                    Page ${this.currentPage} of ${totalPages}
+                </span>
+                <button class="btn btn-outline-primary btn-sm pagination-next"
+                        ${this.currentPage === totalPages ? 'disabled' : ''}>
+                    Next <i class="fas fa-chevron-right ms-1"></i>
+                </button>
+            </div>
+        `;
+
+        // Wire up button handlers
+        const prevBtn = paginationContainer.querySelector('.pagination-prev');
+        const nextBtn = paginationContainer.querySelector('.pagination-next');
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => this.goToPreviousPage());
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => this.goToNextPage());
+        }
+    },
+
+    /**
+     * Navigate to previous page
+     */
+    goToPreviousPage() {
+        if (this.currentPage > 1) {
+            this.currentPage--;
+            this.populateTable(this.allLeads);
+        }
+    },
+
+    /**
+     * Navigate to next page
+     */
+    goToNextPage() {
+        const totalPages = Math.ceil(this.allLeads.length / this.pageSize);
+        if (this.currentPage < totalPages) {
+            this.currentPage++;
+            this.populateTable(this.allLeads);
         }
     },
 
@@ -3480,6 +3570,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         recordsPerPageSelect.addEventListener('change', (e) => {
             const value = e.target.value;
             LeadsPage.pageSize = value === 'all' ? 'all' : parseInt(value);
+
+            // Reset to page 1 when changing page size
+            LeadsPage.currentPage = 1;
 
             // Re-populate table with new page size (populateTable clears automatically)
             LeadsPage.populateTable(LeadsPage.allLeads);
