@@ -230,6 +230,10 @@
 ## User
 | Method | Path | operationId |
 |---|---|---|
+| GET | /api/v1/user/{user_id}/roles | user_roles_api_v1_user__user_id__roles_get |
+| POST | /api/v1/user/{user_id}/roles | add_user_roles_api_v1_user__user_id__roles_post |
+| DELETE | /api/v1/user/{user_id}/roles | remove_user_roles_api_v1_user__user_id__roles_delete |
+| PUT | /api/v1/user/{user_id}/roles | replace_user_roles_api_v1_user__user_id__roles_put |
 | GET | /api/v1/user/ | list_user_api_v1_user__get |
 | POST | /api/v1/user/ | create_user_api_v1_user__post |
 | GET | /api/v1/user/with-relationships | list_user_with_relationships_api_v1_user_with_relationships_get |

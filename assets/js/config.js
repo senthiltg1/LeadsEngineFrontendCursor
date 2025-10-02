@@ -53,7 +53,6 @@ const Config = {
             UPDATE: '/api/v1/lead/',
             DELETE: '/api/v1/lead/',
             WITH_RELATIONSHIPS: '/api/v1/lead/with-relationships',
-            STATS: '/api/v1/lead/stats',
             TIMELINE: '/api/v1/lead/{id}/timeline',
             ASSIGN: '/api/v1/lead/{id}/assign',
             BATCH_SOFT_DELETE: '/api/v1/lead/soft-delete',

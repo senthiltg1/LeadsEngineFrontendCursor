@@ -781,12 +781,16 @@ const LeadsPage = {
         }
 
         // Update results count
-        if (activeFilterCount > 0) {
+        // When no leads are found, hide the counter
+        if (this.allLeads.length === 0) {
+            resultsCount.textContent = '';
+            filterStatusRow.style.display = 'none';
+        } else if (activeFilterCount > 0) {
             resultsCount.textContent = `Showing ${this.allLeads.length} of ${totalCount} leads (${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active)`;
             filterStatusRow.style.display = 'block';
         } else {
             resultsCount.textContent = `Showing ${this.allLeads.length} of ${totalCount} leads`;
-            filterStatusRow.style.display = totalCount > 0 ? 'block' : 'none';
+            filterStatusRow.style.display = 'block';
         }
 
         // Update filter tags
